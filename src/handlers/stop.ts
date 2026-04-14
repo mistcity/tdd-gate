@@ -25,14 +25,11 @@ export function handleStop(
   // 3. Get changed files from git — fail-open on any error
   let changedFiles: Set<string>;
   try {
-    const headOutput = execFileSync('git', ['-C', cwd, 'diff', '--name-only', 'HEAD'], {
-      encoding: 'utf-8',
-      timeout: 5000,
-    }) as string;
-    const cachedOutput = execFileSync('git', ['-C', cwd, 'diff', '--name-only', '--cached'], {
-      encoding: 'utf-8',
-      timeout: 5000,
-    }) as string;
+    const gitOpts: { encoding: 'utf-8'; timeout: number; stdio: ['pipe', 'pipe', 'pipe'] } = {
+      encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'],
+    };
+    const headOutput = execFileSync('git', ['-C', cwd, 'diff', '--name-only', 'HEAD'], gitOpts) as string;
+    const cachedOutput = execFileSync('git', ['-C', cwd, 'diff', '--name-only', '--cached'], gitOpts) as string;
 
     const parseLines = (output: string): string[] =>
       output.split('\n').map((f: string) => f.trim()).filter((f: string) => f.length > 0);

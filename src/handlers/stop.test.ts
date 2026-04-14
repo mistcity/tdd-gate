@@ -161,6 +161,25 @@ describe('handleStop — git command fails', () => {
 
     expect(result.action).toBe('allow');
   });
+
+  it('suppresses git stderr output via stdio option', () => {
+    mockDiff(['src/auth.ts']);
+
+    handleStop(
+      'sess1',
+      '/project',
+      testConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    // Both execFileSync calls must include stdio: ['pipe', 'pipe', 'pipe']
+    // to prevent git stderr from leaking to the parent process
+    for (const call of mockExecSync.mock.calls) {
+      const opts = call[2] as Record<string, unknown>;
+      expect(opts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
+    }
+  });
 });
 
 describe('handleStop — only test files changed', () => {
