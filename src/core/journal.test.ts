@@ -169,7 +169,7 @@ describe('Journal', () => {
       journal.recordTest('/src/b.test.ts');
       const entries = journal.getEntries();
       expect(entries).toHaveLength(2);
-      expect(entries.every(e => e.type === 'TEST')).toBe(true);
+      expect(entries.every((e: { type: string; filePath: string }) => e.type === 'TEST')).toBe(true);
     });
   });
 
