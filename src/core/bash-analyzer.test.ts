@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { analyzeBashCommand } from './bash-analyzer.js';
+import type { BashWriteTarget } from '../types.js';
 
 describe('analyzeBashCommand', () => {
   // -------------------------------------------------------------------------
@@ -9,47 +10,47 @@ describe('analyzeBashCommand', () => {
   describe('file write detection', () => {
     it('detects cat heredoc write: cat > file << EOF', () => {
       const result = analyzeBashCommand("cat > /tmp/foo.ts << 'EOF'\ncontent\nEOF");
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('/tmp/foo.ts');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('/tmp/foo.ts');
     });
 
     it('detects heredoc write without cat: > file << EOF', () => {
       const result = analyzeBashCommand("> /tmp/foo.ts << 'EOF'\ncontent\nEOF");
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('/tmp/foo.ts');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('/tmp/foo.ts');
     });
 
     it('detects echo redirect: echo "hello" > /project/src/auth.ts', () => {
       const result = analyzeBashCommand('echo "hello" > /project/src/auth.ts');
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('/project/src/auth.ts');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('/project/src/auth.ts');
     });
 
     it('detects printf redirect: printf \'%s\' > output.py', () => {
       const result = analyzeBashCommand("printf '%s' > output.py");
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('output.py');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('output.py');
     });
 
     it('detects tee without flags: tee /tmp/bar.js', () => {
       const result = analyzeBashCommand('tee /tmp/bar.js');
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('/tmp/bar.js');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('/tmp/bar.js');
     });
 
     it('detects tee with -a flag: tee -a /tmp/bar.js', () => {
       const result = analyzeBashCommand('tee -a /tmp/bar.js');
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('/tmp/bar.js');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('/tmp/bar.js');
     });
 
     it('detects cat redirect to file: cat file1.txt > file2.txt', () => {
       const result = analyzeBashCommand('cat file1.txt > file2.txt');
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('file2.txt');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('file2.txt');
     });
 
     it('detects cat append: cat >> /tmp/log.txt', () => {
       const result = analyzeBashCommand('cat something >> /tmp/log.txt');
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('/tmp/log.txt');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('/tmp/log.txt');
     });
 
     it('detects echo append: echo "line" >> /tmp/out.txt', () => {
       const result = analyzeBashCommand('echo "line" >> /tmp/out.txt');
-      expect(result.writeTargets.map((t) => t.filePath)).toContain('/tmp/out.txt');
+      expect(result.writeTargets.map((t: BashWriteTarget) => t.filePath)).toContain('/tmp/out.txt');
     });
 
     it('records the matched command pattern in writeTargets', () => {
@@ -59,7 +60,7 @@ describe('analyzeBashCommand', () => {
 
     it('detects multiple writes in one command', () => {
       const result = analyzeBashCommand('echo "a" > foo.ts && echo "b" > bar.ts');
-      const paths = result.writeTargets.map((t) => t.filePath);
+      const paths = result.writeTargets.map((t: BashWriteTarget) => t.filePath);
       expect(paths).toContain('foo.ts');
       expect(paths).toContain('bar.ts');
       expect(result.writeTargets.length).toBe(2);
