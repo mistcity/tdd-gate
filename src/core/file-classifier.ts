@@ -187,7 +187,6 @@ export function classifyFile(filePath: string, config: TddGateConfig): FileClass
 // ---------------------------------------------------------------------------
 
 export function getExpectedTestPaths(implPath: string, config: TddGateConfig): string[] {
-  const ext = path.extname(implPath);
   const basename = path.basename(implPath);
   const dir = path.dirname(implPath);
 

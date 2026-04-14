@@ -4,14 +4,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import path from 'path';
 import {
   LANGUAGES,
   classifyFile,
   getExpectedTestPaths,
-  type FileClassification,
 } from './file-classifier.js';
-import type { TddGateConfig } from '../types.js';
+import type { TddGateConfig, LanguageDefinition } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Mock config
@@ -59,7 +57,7 @@ describe('LANGUAGES', () => {
 
   // ----- Python -----
   describe('Python', () => {
-    const python = () => LANGUAGES.find((l) => l.name === 'python')!;
+    const python = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'python')!;
 
     it('has extension .py', () => {
       expect(python().extensions).toContain('.py');
@@ -86,7 +84,7 @@ describe('LANGUAGES', () => {
 
   // ----- TypeScript -----
   describe('TypeScript', () => {
-    const ts = () => LANGUAGES.find((l) => l.name === 'typescript')!;
+    const ts = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'typescript')!;
 
     it('has extension .ts', () => {
       expect(ts().extensions).toContain('.ts');
@@ -113,7 +111,7 @@ describe('LANGUAGES', () => {
 
   // ----- JavaScript -----
   describe('JavaScript', () => {
-    const js = () => LANGUAGES.find((l) => l.name === 'javascript')!;
+    const js = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'javascript')!;
 
     it('has extension .js', () => {
       expect(js().extensions).toContain('.js');
@@ -140,7 +138,7 @@ describe('LANGUAGES', () => {
 
   // ----- TSX -----
   describe('TSX', () => {
-    const tsx = () => LANGUAGES.find((l) => l.name === 'tsx')!;
+    const tsx = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'tsx')!;
 
     it('has extension .tsx', () => {
       expect(tsx().extensions).toContain('.tsx');
@@ -167,7 +165,7 @@ describe('LANGUAGES', () => {
 
   // ----- JSX -----
   describe('JSX', () => {
-    const jsx = () => LANGUAGES.find((l) => l.name === 'jsx')!;
+    const jsx = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'jsx')!;
 
     it('has extension .jsx', () => {
       expect(jsx().extensions).toContain('.jsx');
@@ -194,7 +192,7 @@ describe('LANGUAGES', () => {
 
   // ----- Kotlin -----
   describe('Kotlin', () => {
-    const kotlin = () => LANGUAGES.find((l) => l.name === 'kotlin')!;
+    const kotlin = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'kotlin')!;
 
     it('has extension .kt', () => {
       expect(kotlin().extensions).toContain('.kt');
@@ -221,7 +219,7 @@ describe('LANGUAGES', () => {
 
   // ----- Java -----
   describe('Java', () => {
-    const java = () => LANGUAGES.find((l) => l.name === 'java')!;
+    const java = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'java')!;
 
     it('has extension .java', () => {
       expect(java().extensions).toContain('.java');
@@ -248,7 +246,7 @@ describe('LANGUAGES', () => {
 
   // ----- Go -----
   describe('Go', () => {
-    const go = () => LANGUAGES.find((l) => l.name === 'go')!;
+    const go = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'go')!;
 
     it('has extension .go', () => {
       expect(go().extensions).toContain('.go');
@@ -270,7 +268,7 @@ describe('LANGUAGES', () => {
 
   // ----- Rust -----
   describe('Rust', () => {
-    const rust = () => LANGUAGES.find((l) => l.name === 'rust')!;
+    const rust = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'rust')!;
 
     it('has extension .rs', () => {
       expect(rust().extensions).toContain('.rs');
@@ -292,7 +290,7 @@ describe('LANGUAGES', () => {
 
   // ----- C# -----
   describe('C#', () => {
-    const csharp = () => LANGUAGES.find((l) => l.name === 'csharp')!;
+    const csharp = () => LANGUAGES.find((l: LanguageDefinition) => l.name === 'csharp')!;
 
     it('has extension .cs', () => {
       expect(csharp().extensions).toContain('.cs');
