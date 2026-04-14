@@ -8,6 +8,10 @@ import type { PreToolUseInput, TddGateConfig } from '../types.js';
 import type { Journal } from '../core/journal.js';
 import type { CircuitBreaker } from '../core/circuit-breaker.js';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const callHandler = (input: PreToolUseInput, config: TddGateConfig, journal: any, cb: any) =>
+  handlePreToolUse(input, config, journal as Journal, cb as CircuitBreaker);
+
 // ---------------------------------------------------------------------------
 // Test config
 // ---------------------------------------------------------------------------
@@ -36,10 +40,16 @@ const testConfig: TddGateConfig = {
 // ---------------------------------------------------------------------------
 
 /** Stub journal with exposed internal arrays for assertions. */
-interface StubJournal extends Journal {
+interface StubJournal {
   tests: string[];
   impls: string[];
   testRuns: string[];
+  recordTest(p: string): void;
+  recordImpl(p: string): void;
+  recordTestRun(c: string): void;
+  hasTestFor(paths: string[]): boolean;
+  hasTestRun(): boolean;
+  getEntries(): Array<{ type: string; filePath: string }>;
 }
 
 function createStubJournal(): StubJournal {
@@ -58,7 +68,7 @@ function createStubJournal(): StubJournal {
     hasTestRun() { return testRuns.length > 0; },
     getEntries() { return []; },
     tests, impls, testRuns,
-  } as unknown as StubJournal;
+  };
 }
 
 function createStubCircuitBreaker(tripped = false) {
@@ -95,7 +105,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Write', { file_path: '/project/package.json' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
     });
@@ -105,7 +115,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Write', { file_path: '/project/README.md' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
     });
@@ -115,7 +125,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Write', { file_path: '/project/src/foo.test.ts' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
       expect(journal.tests).toContain('/project/src/foo.test.ts');
@@ -126,7 +136,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Edit', { file_path: '/project/src/bar.spec.ts' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
       expect(journal.tests).toContain('/project/src/bar.spec.ts');
@@ -138,7 +148,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
     });
@@ -148,7 +158,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Write', { file_path: '/project/schema.sql' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
     });
@@ -158,7 +168,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Write', { file_path: '/project/migrations/001.ts' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
     });
@@ -174,7 +184,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('deny');
     });
@@ -184,7 +194,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Edit', { file_path: '/project/src/bar.ts' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('deny');
       if (result.action === 'deny') {
@@ -198,7 +208,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('MultiEdit', { file_path: '/project/src/utils.ts' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('deny');
     });
@@ -208,7 +218,7 @@ describe('PreToolUse handler — Write/Edit tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Write', { file_path: '/project/app.py' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('deny');
       if (result.action === 'deny') {
@@ -229,7 +239,7 @@ describe('PreToolUse handler — Bash tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Bash', { command: 'npm test' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
       expect(journal.testRuns).toContain('npm test');
@@ -240,7 +250,7 @@ describe('PreToolUse handler — Bash tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Bash', { command: 'ls -la' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
     });
@@ -250,7 +260,7 @@ describe('PreToolUse handler — Bash tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Bash', { command: 'echo "hello" > config.json' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
     });
@@ -260,7 +270,7 @@ describe('PreToolUse handler — Bash tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Bash', { command: 'cat > foo.test.ts << EOF\ntest\nEOF' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
     });
@@ -270,7 +280,7 @@ describe('PreToolUse handler — Bash tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Bash', { command: 'pytest tests/' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('allow');
       expect(journal.testRuns).toContain('pytest tests/');
@@ -283,7 +293,7 @@ describe('PreToolUse handler — Bash tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Bash', { command: 'echo "code" > foo.ts' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('deny');
     });
@@ -293,7 +303,7 @@ describe('PreToolUse handler — Bash tool', () => {
       const cb = createStubCircuitBreaker();
       const input = makeInput('Bash', { command: 'cat > server.py << EOF\nprint("hi")\nEOF' });
 
-      const result = handlePreToolUse(input, testConfig, journal, cb);
+      const result = callHandler(input, testConfig, journal, cb);
 
       expect(result.action).toBe('deny');
     });
@@ -310,7 +320,7 @@ describe('PreToolUse handler — Circuit breaker', () => {
     const cb = createStubCircuitBreaker(true);
     const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
 
-    const result = handlePreToolUse(input, testConfig, journal, cb);
+    const result = callHandler(input, testConfig, journal, cb);
 
     expect(result.action).toBe('allow');
   });
@@ -320,7 +330,7 @@ describe('PreToolUse handler — Circuit breaker', () => {
     const cb = createStubCircuitBreaker(true);
     const input = makeInput('Bash', { command: 'echo "x" > foo.ts' });
 
-    const result = handlePreToolUse(input, testConfig, journal, cb);
+    const result = callHandler(input, testConfig, journal, cb);
 
     expect(result.action).toBe('allow');
   });
@@ -336,7 +346,7 @@ describe('PreToolUse handler — Edge cases', () => {
     const cb = createStubCircuitBreaker();
     const input = makeInput('Write', {});
 
-    const result = handlePreToolUse(input, testConfig, journal, cb);
+    const result = callHandler(input, testConfig, journal, cb);
 
     expect(result.action).toBe('allow');
   });
@@ -346,7 +356,7 @@ describe('PreToolUse handler — Edge cases', () => {
     const cb = createStubCircuitBreaker();
     const input = makeInput('Bash', {});
 
-    const result = handlePreToolUse(input, testConfig, journal, cb);
+    const result = callHandler(input, testConfig, journal, cb);
 
     expect(result.action).toBe('allow');
   });
@@ -356,7 +366,7 @@ describe('PreToolUse handler — Edge cases', () => {
     const cb = createStubCircuitBreaker();
     const input = makeInput('Write', { file_path: '' });
 
-    const result = handlePreToolUse(input, testConfig, journal, cb);
+    const result = callHandler(input, testConfig, journal, cb);
 
     expect(result.action).toBe('allow');
   });
@@ -367,7 +377,7 @@ describe('PreToolUse handler — Edge cases', () => {
     const noBashConfig = { ...testConfig, bashDetection: false };
     const input = makeInput('Bash', { command: 'echo "x" > foo.ts' });
 
-    const result = handlePreToolUse(input, noBashConfig, journal, cb);
+    const result = callHandler(input, noBashConfig, journal, cb);
 
     expect(result.action).toBe('allow');
   });
