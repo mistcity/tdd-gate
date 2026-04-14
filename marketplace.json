@@ -1,0 +1,8 @@
+{
+  "name": "tdd-gate",
+  "description": "Zero-cost, full-coverage TDD enforcement for Claude Code. Requires tests before implementation, detects Bash writes, audits completion.",
+  "author": "mistcity",
+  "repository": "https://github.com/mistcity/tdd-gate",
+  "keywords": ["tdd", "testing", "hooks", "enforcement"],
+  "license": "MIT"
+}

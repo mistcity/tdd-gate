@@ -1,0 +1,7 @@
+{
+  "name": "tdd-gate",
+  "version": "0.1.0",
+  "description": "Zero-cost, full-coverage TDD enforcement for Claude Code",
+  "author": "mistcity",
+  "license": "MIT"
+}
