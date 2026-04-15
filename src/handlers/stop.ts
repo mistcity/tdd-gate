@@ -34,7 +34,7 @@ export function handleStop(
     const cachedOutput = execFileSync('git', ['-C', cwd, 'diff', '--name-only', '--cached'], gitOpts) as string;
 
     const parseLines = (output: string): string[] =>
-      output.split('\n').map((f: string) => f.trim()).filter((f: string) => f.length > 0);
+      output.split('\n').map((f) => f.trim()).filter((f) => f.length > 0);
 
     changedFiles = new Set([...parseLines(headOutput), ...parseLines(cachedOutput)]);
   } catch {
@@ -63,19 +63,18 @@ export function handleStop(
   const hasDirectViolation = !testFilesChanged && !journal.hasTestRun();
 
   // 5.5 Impact analysis: check if dependents of changed impl files also need tests
-  const absImplPaths = implFiles.map((f: string) => path.resolve(cwd, f));
+  const absImplPaths = implFiles.map((f) => path.resolve(cwd, f));
   const impactResults = analyzeImpact(absImplPaths, cwd, config, journal);
 
   // Gather impact lines for uncovered dependents
-  const impactLines: string[] = [];
-  for (const result of impactResults) {
+  const impactLines = impactResults.flatMap((result) => {
     const changedBasename = path.basename(result.filePath);
-    for (let i = 0; i < result.dependents.length; i++) {
-      const depBasename = path.basename(result.dependents[i]);
+    return result.dependents.map((dep, i) => {
+      const depBasename = path.basename(dep);
       const testName = result.missingTests[i] || 'unknown test';
-      impactLines.push(`  - ${depBasename} depends on modified ${changedBasename} → run ${testName}`);
-    }
-  }
+      return `  - ${depBasename} depends on modified ${changedBasename} → run ${testName}`;
+    });
+  });
 
   const hasImpactViolation = impactLines.length > 0;
 
@@ -86,11 +85,11 @@ export function handleStop(
   const messageParts: string[] = [];
 
   if (hasDirectViolation) {
-    const lines = implFiles.map((f: string) => {
+    const lines = implFiles.map((f) => {
       const expectedPaths = getExpectedTestPaths(f, config);
       const expectedNames = expectedPaths
         .slice(0, 2)
-        .map((p: string) => p.split('/').pop()!)
+        .map((p) => p.split('/').pop()!)
         .join(' or ');
       return `  - ${f} (expected: ${expectedNames})`;
     });

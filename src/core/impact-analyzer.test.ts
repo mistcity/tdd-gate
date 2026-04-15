@@ -1,5 +1,5 @@
 /**
- * Tests for impact-analyzer.ts — buildImportPattern()
+ * Tests for impact-analyzer.ts — buildImportPattern(), findDependents(), analyzeImpact()
  *
  * TDD: tests written before implementation.
  * Each test verifies that the generated regex pattern matches

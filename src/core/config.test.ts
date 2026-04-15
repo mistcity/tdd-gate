@@ -1,6 +1,8 @@
 /**
  * Tests for config loader — DEFAULT_CONFIG and loadConfig().
  * Written first (TDD RED phase).
+ *
+ * Covers: override(), overrideArray(), isPlainObject() helpers via loadConfig() integration.
  */
 
 import fs from 'fs';

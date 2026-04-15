@@ -7,7 +7,7 @@
 
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import type { ImpactResult, LanguageDefinition, TddGateConfig } from '../types.js';
+import type { ImpactResult, TddGateConfig } from '../types.js';
 import { LANGUAGES, classifyFile } from './file-classifier.js';
 import type { Journal } from './journal.js';
 
@@ -104,6 +104,13 @@ export function buildImportPattern(basename: string, language: string): string {
 // findDependents
 // ---------------------------------------------------------------------------
 
+/** JS/TS extensions share a single search family (cross-extension imports). */
+const JS_TS_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+const JS_TS_SET = new Set(JS_TS_EXTENSIONS);
+
+/** Directories excluded from grep to avoid false positives and timeouts. */
+const EXCLUDE_DIRS = ['node_modules', '.git', 'dist', 'build', '.next', 'vendor', '__pycache__', '.venv', 'venv'];
+
 interface FindDependentsOptions {
   maxFiles: number;
   timeout: number;
@@ -124,25 +131,14 @@ export function findDependents(
   projectRoot: string,
   options: FindDependentsOptions,
 ): string[] {
-  const basename = path.basename(filePath, path.extname(filePath));
   const ext = path.extname(filePath);
+  const basename = path.basename(filePath, ext);
   const pattern = buildImportPattern(basename, language);
 
-  // Build --include args for all extensions in the same language family
-  // e.g., .ts file should also search .tsx, .js, .jsx files
-  const RELATED_EXTENSIONS: Record<string, string[]> = {
-    '.ts': ['.ts', '.tsx', '.js', '.jsx'],
-    '.tsx': ['.ts', '.tsx', '.js', '.jsx'],
-    '.js': ['.ts', '.tsx', '.js', '.jsx'],
-    '.jsx': ['.ts', '.tsx', '.js', '.jsx'],
-  };
-  const searchExts = RELATED_EXTENSIONS[ext] ?? [ext];
+  // JS/TS files share a search family; other languages search their own extension
+  const searchExts = JS_TS_SET.has(ext) ? JS_TS_EXTENSIONS : [ext];
   const includeArgs = searchExts.flatMap((e) => ['--include', `*${e}`]);
-
-  // Exclude common build/dependency directories to avoid false positives
-  // and prevent timeout on large projects
-  const excludeDirs = ['node_modules', '.git', 'dist', 'build', '.next', 'vendor', '__pycache__', '.venv', 'venv'];
-  const excludeArgs = excludeDirs.flatMap((d) => ['--exclude-dir', d]);
+  const excludeArgs = EXCLUDE_DIRS.flatMap((d) => ['--exclude-dir', d]);
 
   try {
     const stdout = execFileSync(
@@ -156,28 +152,15 @@ export function findDependents(
     );
 
     const files = stdout.trim().split('\n').filter(Boolean);
-
-    // Filter out the file itself
     const selfResolved = path.resolve(filePath);
-
-    // Look up the language definition for isTestFile
-    const langDef: LanguageDefinition | undefined = (() => {
-      const langName = LANGUAGE_BY_EXT.get(ext);
-      if (!langName) return undefined;
-      return LANGUAGES.find((l) => l.name === langName);
-    })();
+    const langDef = LANGUAGES.find((l) => l.name === LANGUAGE_BY_EXT.get(ext));
 
     const filtered = files.filter((f) => {
-      // Exclude the file itself
       if (path.resolve(f) === selfResolved) return false;
-
-      // Exclude test files
-      if (langDef && langDef.isTestFile(path.basename(f))) return false;
-
+      if (langDef?.isTestFile(path.basename(f))) return false;
       return true;
     });
 
-    // Limit to maxFiles
     return filtered.slice(0, options.maxFiles);
   } catch {
     // Fail-open: grep exit code 1 means "no matches", other errors also return []

@@ -46,6 +46,25 @@ export const DEFAULT_CONFIG: TddGateConfig = {
 };
 
 // ---------------------------------------------------------------------------
+// Config merge helpers
+// ---------------------------------------------------------------------------
+
+/** Return `user[key]` if it matches `expectedType`, otherwise `fallback`. */
+function override<T>(user: Record<string, unknown>, key: string, expectedType: string, fallback: T): T {
+  return typeof user[key] === expectedType ? (user[key] as T) : fallback;
+}
+
+/** Return `user[key]` if it is an array, otherwise `fallback`. */
+function overrideArray<T>(user: Record<string, unknown>, key: string, fallback: T[]): T[] {
+  return Array.isArray(user[key]) ? (user[key] as T[]) : fallback;
+}
+
+/** Return true if `value` is a non-null, non-array plain object. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+// ---------------------------------------------------------------------------
 // Config loader
 // ---------------------------------------------------------------------------
 
@@ -60,24 +79,19 @@ export function loadConfig(cwd: string): TddGateConfig {
     const raw = fs.readFileSync(configPath, 'utf-8');
     const parsed: unknown = JSON.parse(raw);
 
-    // Must be a plain object (not array, string, null, etc.)
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return DEFAULT_CONFIG;
-    }
+    if (!isPlainObject(parsed)) return DEFAULT_CONFIG;
 
-    const user = parsed as Record<string, unknown>;
+    const user = parsed;
 
     // Deep merge languages: per-language override
     const languages = { ...DEFAULT_CONFIG.languages };
-    if (typeof user['languages'] === 'object' && user['languages'] !== null && !Array.isArray(user['languages'])) {
-      const userLangs = user['languages'] as Record<string, unknown>;
-      for (const [lang, cfg] of Object.entries(userLangs)) {
-        if (typeof cfg === 'object' && cfg !== null && !Array.isArray(cfg)) {
-          const langCfg = cfg as Record<string, unknown>;
+    if (isPlainObject(user['languages'])) {
+      for (const [lang, cfg] of Object.entries(user['languages'])) {
+        if (isPlainObject(cfg)) {
           languages[lang] = {
             ...DEFAULT_CONFIG.languages[lang],
-            enabled: typeof langCfg['enabled'] === 'boolean'
-              ? langCfg['enabled']
+            enabled: typeof cfg['enabled'] === 'boolean'
+              ? cfg['enabled']
               : (DEFAULT_CONFIG.languages[lang]?.enabled ?? true),
           };
         }
@@ -86,62 +100,37 @@ export function loadConfig(cwd: string): TddGateConfig {
 
     // exempt: user values REPLACE defaults for extensions and paths
     const exempt = { ...DEFAULT_CONFIG.exempt };
-    if (typeof user['exempt'] === 'object' && user['exempt'] !== null && !Array.isArray(user['exempt'])) {
-      const userExempt = user['exempt'] as Record<string, unknown>;
-      if (Array.isArray(userExempt['extensions'])) {
-        exempt.extensions = userExempt['extensions'] as string[];
+    if (isPlainObject(user['exempt'])) {
+      if (Array.isArray(user['exempt']['extensions'])) {
+        exempt.extensions = user['exempt']['extensions'] as string[];
       }
-      if (Array.isArray(userExempt['paths'])) {
-        exempt.paths = userExempt['paths'] as string[];
+      if (Array.isArray(user['exempt']['paths'])) {
+        exempt.paths = user['exempt']['paths'] as string[];
       }
     }
-
-    // Scalar overrides
-    const bashDetection = typeof user['bashDetection'] === 'boolean'
-      ? user['bashDetection']
-      : DEFAULT_CONFIG.bashDetection;
-
-    const completionAudit = typeof user['completionAudit'] === 'boolean'
-      ? user['completionAudit']
-      : DEFAULT_CONFIG.completionAudit;
 
     // circuitBreaker: per-field merge
     const circuitBreaker = { ...DEFAULT_CONFIG.circuitBreaker };
-    if (typeof user['circuitBreaker'] === 'object' && user['circuitBreaker'] !== null && !Array.isArray(user['circuitBreaker'])) {
-      const userCb = user['circuitBreaker'] as Record<string, unknown>;
-      if (typeof userCb['preToolUse'] === 'number') {
-        circuitBreaker.preToolUse = userCb['preToolUse'];
+    if (isPlainObject(user['circuitBreaker'])) {
+      if (typeof user['circuitBreaker']['preToolUse'] === 'number') {
+        circuitBreaker.preToolUse = user['circuitBreaker']['preToolUse'];
       }
-      if (typeof userCb['stop'] === 'number') {
-        circuitBreaker.stop = userCb['stop'];
+      if (typeof user['circuitBreaker']['stop'] === 'number') {
+        circuitBreaker.stop = user['circuitBreaker']['stop'];
       }
     }
 
-    // Array overrides: user replaces default
-    const testCommands = Array.isArray(user['testCommands'])
-      ? user['testCommands'] as string[]
-      : DEFAULT_CONFIG.testCommands;
-
-    const testDirs = Array.isArray(user['testDirs'])
-      ? user['testDirs'] as string[]
-      : DEFAULT_CONFIG.testDirs;
-
-    // Scalar overrides for impact analysis
-    const impactAnalysis = typeof user['impactAnalysis'] === 'boolean'
-      ? user['impactAnalysis']
-      : DEFAULT_CONFIG.impactAnalysis;
-
-    const impactAnalysisMaxFiles = typeof user['impactAnalysisMaxFiles'] === 'number'
-      ? user['impactAnalysisMaxFiles']
-      : DEFAULT_CONFIG.impactAnalysisMaxFiles;
-
-    const impactAnalysisTimeout = typeof user['impactAnalysisTimeout'] === 'number'
-      ? user['impactAnalysisTimeout']
-      : DEFAULT_CONFIG.impactAnalysisTimeout;
-
     return {
-      languages, exempt, bashDetection, completionAudit, circuitBreaker,
-      testCommands, testDirs, impactAnalysis, impactAnalysisMaxFiles, impactAnalysisTimeout,
+      languages,
+      exempt,
+      bashDetection:          override(user, 'bashDetection', 'boolean', DEFAULT_CONFIG.bashDetection),
+      completionAudit:        override(user, 'completionAudit', 'boolean', DEFAULT_CONFIG.completionAudit),
+      circuitBreaker,
+      testCommands:           overrideArray(user, 'testCommands', DEFAULT_CONFIG.testCommands),
+      testDirs:               overrideArray(user, 'testDirs', DEFAULT_CONFIG.testDirs),
+      impactAnalysis:         override(user, 'impactAnalysis', 'boolean', DEFAULT_CONFIG.impactAnalysis),
+      impactAnalysisMaxFiles: override(user, 'impactAnalysisMaxFiles', 'number', DEFAULT_CONFIG.impactAnalysisMaxFiles),
+      impactAnalysisTimeout:  override(user, 'impactAnalysisTimeout', 'number', DEFAULT_CONFIG.impactAnalysisTimeout),
     };
   } catch {
     return DEFAULT_CONFIG;

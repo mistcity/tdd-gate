@@ -1,5 +1,5 @@
 /**
- * Tests for the Stop handler — completion audit logic.
+ * Tests for the Stop handler — completion audit logic with impact analysis.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
