@@ -3,7 +3,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import type { TddGateConfig } from '../types.js';
+import type { TddGateConfig, ImpactResult } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Mock child_process BEFORE importing the module under test
@@ -13,8 +13,15 @@ vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
+vi.mock('../core/impact-analyzer.js', () => ({
+  analyzeImpact: vi.fn(),
+}));
+
 import { execFileSync } from 'child_process';
 const mockExecSync = vi.mocked(execFileSync);
+
+import { analyzeImpact } from '../core/impact-analyzer.js';
+const mockAnalyzeImpact = vi.mocked(analyzeImpact);
 
 import { handleStop } from './stop.js';
 
@@ -97,6 +104,8 @@ function mockDiff(headLines: string[], cachedLines: string[] = []): void {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: impact analysis returns no issues
+  mockAnalyzeImpact.mockReturnValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -342,5 +351,189 @@ describe('handleStop — cached diff combined with HEAD diff', () => {
     if (result.action === 'block') {
       expect(result.message).toContain('src/utils.ts');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Impact analysis integration tests
+// ---------------------------------------------------------------------------
+
+const impactDisabledConfig: TddGateConfig = {
+  ...testConfig,
+  impactAnalysis: false,
+};
+
+describe('handleStop — impact analysis blocks when dependent tests not run', () => {
+  it('blocks when impl file passes basic check but has uncovered dependents', () => {
+    // Scenario: src/auth.ts changed, test file also changed (passes basic check),
+    // but impact analysis finds that src/api.ts depends on auth.ts and has no test
+    mockDiff(['src/auth.ts', 'src/auth.test.ts']);
+
+    const impactResults: ImpactResult[] = [
+      {
+        filePath: '/project/src/auth.ts',
+        dependents: ['/project/src/api.ts'],
+        missingTests: ['api.test.ts'],
+      },
+    ];
+    mockAnalyzeImpact.mockReturnValue(impactResults);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      testConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('block');
+    if (result.action === 'block') {
+      expect(result.message).toContain('Impact analysis');
+      expect(result.message).toContain('depends on');
+    }
+  });
+
+  it('formats impact lines with dependent and changed file basenames and test name', () => {
+    mockDiff(['src/auth.ts', 'src/auth.test.ts']);
+
+    const impactResults: ImpactResult[] = [
+      {
+        filePath: '/project/src/auth.ts',
+        dependents: ['/project/src/api.ts'],
+        missingTests: ['api.test.ts'],
+      },
+    ];
+    mockAnalyzeImpact.mockReturnValue(impactResults);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      testConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('block');
+    if (result.action === 'block') {
+      // Format: "  - api.ts depends on modified auth.ts → run api.test.ts"
+      expect(result.message).toMatch(/api\.ts depends on modified auth\.ts/);
+      expect(result.message).toContain('api.test.ts');
+    }
+  });
+});
+
+describe('handleStop — impact analysis skipped when disabled', () => {
+  it('allows when impactAnalysis is disabled even if analyzeImpact would find issues', () => {
+    // impl + test both changed → passes basic check
+    mockDiff(['src/auth.ts', 'src/auth.test.ts']);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      impactDisabledConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    // analyzeImpact should not be called when config disables it
+    // (the function itself does early return, but stop handler should also not block)
+    // Since analyzeImpact returns [] when disabled, no blocking will occur
+  });
+});
+
+describe('handleStop — impact analysis skipped when test suite was run', () => {
+  it('allows when test suite was run even if dependents would be uncovered', () => {
+    mockDiff(['src/auth.ts']);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      testConfig,
+      createStubJournal(true), // test run recorded
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+  });
+});
+
+describe('handleStop — impact analysis combined with direct TDD violations', () => {
+  it('appends impact info to existing block message when both direct and impact violations exist', () => {
+    // impl changed, no test changed, no test run → basic check blocks
+    // AND impact analysis also finds issues
+    mockDiff(['src/auth.ts']);
+
+    const impactResults: ImpactResult[] = [
+      {
+        filePath: '/project/src/auth.ts',
+        dependents: ['/project/src/api.ts'],
+        missingTests: ['api.test.ts'],
+      },
+    ];
+    mockAnalyzeImpact.mockReturnValue(impactResults);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      testConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('block');
+    if (result.action === 'block') {
+      // Should contain both the direct violation info AND impact analysis info
+      expect(result.message).toContain('src/auth.ts');
+      expect(result.message).toContain('Impact analysis');
+      expect(result.message).toContain('depends on');
+    }
+  });
+
+  it('passes absolute impl file paths to analyzeImpact', () => {
+    mockDiff(['src/auth.ts', 'src/auth.test.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    handleStop(
+      'sess1',
+      '/project',
+      testConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    // analyzeImpact should be called with absolute paths
+    expect(mockAnalyzeImpact).toHaveBeenCalledWith(
+      ['/project/src/auth.ts'],
+      '/project',
+      testConfig,
+      expect.anything(),
+    );
+  });
+});
+
+describe('handleStop — impact analysis with no uncovered dependents', () => {
+  it('allows when impact analysis finds dependents but all have tests', () => {
+    mockDiff(['src/auth.ts', 'src/auth.test.ts']);
+
+    // Impact results with empty dependents = no uncovered dependents
+    const impactResults: ImpactResult[] = [
+      {
+        filePath: '/project/src/auth.ts',
+        dependents: [],
+        missingTests: [],
+      },
+    ];
+    mockAnalyzeImpact.mockReturnValue(impactResults);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      testConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
   });
 });

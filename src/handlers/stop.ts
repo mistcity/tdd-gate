@@ -4,9 +4,11 @@
  */
 
 import { execFileSync } from 'child_process';
+import path from 'path';
 import { Journal } from '../core/journal.js';
 import { CircuitBreaker } from '../core/circuit-breaker.js';
 import { classifyFile, getExpectedTestPaths } from '../core/file-classifier.js';
+import { analyzeImpact } from '../core/impact-analyzer.js';
 import type { TddGateConfig } from '../types.js';
 
 export function handleStop(
@@ -57,24 +59,56 @@ export function handleStop(
 
   // 5. Block only if: impl files exist AND no test files changed AND no test run recorded
   if (implFiles.length === 0) return { action: 'allow' };
-  if (testFilesChanged) return { action: 'allow' };
-  if (journal.hasTestRun()) return { action: 'allow' };
 
-  // Build block message listing each uncovered impl file
-  const lines = implFiles.map((f: string) => {
-    const expectedPaths = getExpectedTestPaths(f, config);
-    const expectedNames = expectedPaths
-      .slice(0, 2) // show at most the first two expected test paths (same-dir variants)
-      .map((p: string) => p.split('/').pop()!)
-      .join(' or ');
-    return `  - ${f} (expected: ${expectedNames})`;
-  });
+  const hasDirectViolation = !testFilesChanged && !journal.hasTestRun();
 
-  const message = [
-    'Completion audit: The following implementation files were changed without corresponding test files:',
-    ...lines,
-    'Please add tests before completing.',
-  ].join('\n');
+  // 5.5 Impact analysis: check if dependents of changed impl files also need tests
+  const absImplPaths = implFiles.map((f: string) => path.resolve(cwd, f));
+  const impactResults = analyzeImpact(absImplPaths, cwd, config, journal);
 
-  return { action: 'block', message };
+  // Gather impact lines for uncovered dependents
+  const impactLines: string[] = [];
+  for (const result of impactResults) {
+    const changedBasename = path.basename(result.filePath);
+    for (let i = 0; i < result.dependents.length; i++) {
+      const depBasename = path.basename(result.dependents[i]);
+      const testName = result.missingTests[i] || 'unknown test';
+      impactLines.push(`  - ${depBasename} depends on modified ${changedBasename} → run ${testName}`);
+    }
+  }
+
+  const hasImpactViolation = impactLines.length > 0;
+
+  // If neither direct nor impact violations, allow
+  if (!hasDirectViolation && !hasImpactViolation) return { action: 'allow' };
+
+  // Build combined block message
+  const messageParts: string[] = [];
+
+  if (hasDirectViolation) {
+    const lines = implFiles.map((f: string) => {
+      const expectedPaths = getExpectedTestPaths(f, config);
+      const expectedNames = expectedPaths
+        .slice(0, 2)
+        .map((p: string) => p.split('/').pop()!)
+        .join(' or ');
+      return `  - ${f} (expected: ${expectedNames})`;
+    });
+
+    messageParts.push(
+      'Completion audit: The following implementation files were changed without corresponding test files:',
+      ...lines,
+      'Please add tests before completing.',
+    );
+  }
+
+  if (hasImpactViolation) {
+    if (messageParts.length > 0) messageParts.push('');
+    messageParts.push(
+      'Impact analysis: The following files depend on your changes and need tests:',
+      ...impactLines,
+    );
+  }
+
+  return { action: 'block', message: messageParts.join('\n') };
 }
