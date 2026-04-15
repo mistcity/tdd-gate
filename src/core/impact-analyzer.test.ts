@@ -7,10 +7,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { buildImportPattern, LANGUAGE_BY_EXT, findDependents } from './impact-analyzer.js';
+import { buildImportPattern, LANGUAGE_BY_EXT, findDependents, analyzeImpact } from './impact-analyzer.js';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { TddGateConfig } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Helper: test a pattern against a string using grep -E compatible regex
@@ -455,5 +456,173 @@ describe('findDependents', () => {
     );
 
     expect(result.length).toBeLessThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// analyzeImpact — orchestrator tests
+// ---------------------------------------------------------------------------
+
+/** Minimal config enabling TypeScript with impact analysis on */
+function makeConfig(overrides?: Partial<TddGateConfig>): TddGateConfig {
+  return {
+    languages: { typescript: { enabled: true } },
+    exempt: { extensions: ['.json', '.md'], paths: [] },
+    bashDetection: true,
+    completionAudit: true,
+    circuitBreaker: { preToolUse: 100, stop: 50 },
+    testCommands: ['vitest', 'jest'],
+    testDirs: [],
+    impactAnalysis: true,
+    impactAnalysisMaxFiles: 50,
+    impactAnalysisTimeout: 5000,
+    ...overrides,
+  };
+}
+
+describe('analyzeImpact', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'tdd-gate-analyzeImpact-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns empty when config.impactAnalysis is false', () => {
+    const config = makeConfig({ impactAnalysis: false });
+    const journal = { hasTestFor: () => false, hasTestRun: () => false } as any;
+
+    const result = analyzeImpact(
+      [join(tmpDir, 'auth.ts')],
+      tmpDir,
+      config,
+      journal,
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty when journal.hasTestRun() is true (test suite ran)', () => {
+    const config = makeConfig();
+    const journal = { hasTestFor: () => false, hasTestRun: () => true } as any;
+
+    const result = analyzeImpact(
+      [join(tmpDir, 'auth.ts')],
+      tmpDir,
+      config,
+      journal,
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns uncovered dependents when their tests were not run', () => {
+    // Create the changed impl file
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    // Create a dependent impl file that imports auth
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";\nexport function main() { login(); }',
+    );
+
+    const config = makeConfig();
+    const journal = { hasTestFor: () => false, hasTestRun: () => false } as any;
+
+    const result = analyzeImpact(
+      [join(tmpDir, 'auth.ts')],
+      tmpDir,
+      config,
+      journal,
+    );
+
+    // Should find app.ts as an uncovered dependent
+    expect(result.length).toBe(1);
+    expect(result[0].filePath).toBe(join(tmpDir, 'auth.ts'));
+    expect(result[0].dependents).toContain(join(tmpDir, 'app.ts'));
+    expect(result[0].missingTests.length).toBeGreaterThan(0);
+  });
+
+  it('skips dependents that are not impl type (e.g. test files, exempt)', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    // Only a test file depends on auth — should be skipped
+    writeFileSync(
+      join(tmpDir, 'auth.test.ts'),
+      'import { login } from "./auth";\nit("works", () => {});',
+    );
+
+    const config = makeConfig();
+    const journal = { hasTestFor: () => false, hasTestRun: () => false } as any;
+
+    const result = analyzeImpact(
+      [join(tmpDir, 'auth.ts')],
+      tmpDir,
+      config,
+      journal,
+    );
+
+    // findDependents already excludes test files, so result should have no dependents
+    // (or the dependent list is empty, so no ImpactResult with uncovered deps)
+    if (result.length > 0) {
+      expect(result[0].dependents).toEqual([]);
+      expect(result[0].missingTests).toEqual([]);
+    } else {
+      expect(result).toEqual([]);
+    }
+  });
+
+  it('returns empty dependents when all dependent tests were written', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";\nexport function main() { login(); }',
+    );
+
+    const config = makeConfig();
+    // hasTestFor returns true — all tests covered
+    const journal = { hasTestFor: () => true, hasTestRun: () => false } as any;
+
+    const result = analyzeImpact(
+      [join(tmpDir, 'auth.ts')],
+      tmpDir,
+      config,
+      journal,
+    );
+
+    // No uncovered dependents, so no results (or results with empty lists)
+    if (result.length > 0) {
+      expect(result[0].dependents).toEqual([]);
+      expect(result[0].missingTests).toEqual([]);
+    } else {
+      expect(result).toEqual([]);
+    }
+  });
+
+  it('handles multiple changed files', () => {
+    // Two changed files, each with a dependent
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    writeFileSync(join(tmpDir, 'db.ts'), 'export function query() {}');
+    writeFileSync(
+      join(tmpDir, 'service.ts'),
+      'import { login } from "./auth";\nimport { query } from "./db";',
+    );
+
+    const config = makeConfig();
+    const journal = { hasTestFor: () => false, hasTestRun: () => false } as any;
+
+    const result = analyzeImpact(
+      [join(tmpDir, 'auth.ts'), join(tmpDir, 'db.ts')],
+      tmpDir,
+      config,
+      journal,
+    );
+
+    // Both changed files should produce results
+    expect(result.length).toBe(2);
+    const filePaths = result.map(r => r.filePath);
+    expect(filePaths).toContain(join(tmpDir, 'auth.ts'));
+    expect(filePaths).toContain(join(tmpDir, 'db.ts'));
   });
 });

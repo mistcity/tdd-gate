@@ -7,8 +7,9 @@
 
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import type { ImpactResult, LanguageDefinition } from '../types.js';
-import { LANGUAGES } from './file-classifier.js';
+import type { ImpactResult, LanguageDefinition, TddGateConfig } from '../types.js';
+import { LANGUAGES, classifyFile } from './file-classifier.js';
+import type { Journal } from './journal.js';
 
 // ---------------------------------------------------------------------------
 // LANGUAGE_BY_EXT — lookup map from extension to language name
@@ -150,4 +151,71 @@ export function findDependents(
     // Fail-open: grep exit code 1 means "no matches", other errors also return []
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// analyzeImpact — orchestrator
+// ---------------------------------------------------------------------------
+
+/**
+ * Orchestrator that ties findDependents with journal checking.
+ *
+ * For each changed implementation file, finds files that depend on it and
+ * checks whether their corresponding tests have been written. Returns an
+ * array of ImpactResult objects describing uncovered dependents.
+ *
+ * Returns [] early when:
+ * - config.impactAnalysis is disabled
+ * - journal.hasTestRun() is true (a full test suite was executed)
+ */
+export function analyzeImpact(
+  changedImplFiles: string[],
+  projectRoot: string,
+  config: TddGateConfig,
+  journal: Journal,
+): ImpactResult[] {
+  // Early exit: feature disabled
+  if (!config.impactAnalysis) return [];
+
+  // Early exit: a test suite was run, no need to check individual coverage
+  if (journal.hasTestRun()) return [];
+
+  const results: ImpactResult[] = [];
+
+  for (const filePath of changedImplFiles) {
+    const ext = path.extname(filePath);
+    const language = LANGUAGE_BY_EXT.get(ext);
+
+    // Unknown language — skip
+    if (!language) continue;
+
+    const dependents = findDependents(filePath, language, projectRoot, {
+      maxFiles: config.impactAnalysisMaxFiles,
+      timeout: config.impactAnalysisTimeout,
+    });
+
+    const uncoveredDependents: string[] = [];
+    const missingTests: string[] = [];
+
+    for (const dep of dependents) {
+      const classification = classifyFile(dep, config);
+
+      // Only care about impl files — test files and exempt files are skipped
+      if (classification.type !== 'impl') continue;
+
+      // Check if tests for this dependent have been written
+      if (!journal.hasTestFor(classification.expectedTests)) {
+        uncoveredDependents.push(dep);
+        missingTests.push(...classification.expectedTests);
+      }
+    }
+
+    results.push({
+      filePath,
+      dependents: uncoveredDependents,
+      missingTests,
+    });
+  }
+
+  return results;
 }
