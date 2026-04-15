@@ -1,15 +1,14 @@
 # tdd-gate 开发规范
 
-## 构建与提交（必须遵守！）
+## 构建机制
 
-dist/ 已提交到 git。**每次修改 src/ 下的代码后，必须：**
+dist/ 不提交到 git。插件使用官方 `${CLAUDE_PLUGIN_DATA}` 机制：
+- `SessionStart` hook 自动检测 package.json 变化
+- 变化时自动 `npm install` + `tsc` 构建到 `${CLAUDE_PLUGIN_DATA}/dist/`
+- 所有 hook 命令从 `${CLAUDE_PLUGIN_DATA}/dist/index.js` 加载
+- 构建产物跨版本持久化，只在依赖变化时重新构建
 
-1. `npx vitest run` — 全部测试通过
-2. `npx tsc` — 重新构建 dist/
-3. `git add src/ dist/` — 同时提交源码和编译产物
-4. 提交
-
-**绝对不允许**只提交 src/ 不提交 dist/，否则安装的用户会拿到过时的编译产物。
+**开发时只需提交 src/，不需要提交 dist/。**
 
 ## TDD
 
