@@ -85,6 +85,21 @@ export interface TddGateConfig {
   bashDetection: boolean;
   completionAudit: boolean;
   circuitBreaker: CircuitBreakerConfig;
+  testCommands: string[];
+  testDirs: string[];
+  impactAnalysis: boolean;
+  impactAnalysisMaxFiles: number;
+  impactAnalysisTimeout: number;
+}
+
+// ---------------------------------------------------------------------------
+// Impact Analysis Types
+// ---------------------------------------------------------------------------
+
+export interface ImpactResult {
+  filePath: string;
+  dependents: string[];
+  missingTests: string[];
 }
 
 // ---------------------------------------------------------------------------

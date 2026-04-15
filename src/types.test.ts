@@ -21,6 +21,7 @@ import type {
   JournalEntry,
   BashWriteTarget,
   BashAnalysisResult,
+  ImpactResult,
 } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -284,6 +285,11 @@ describe('TddGateConfig', () => {
         preToolUse: 20,
         stop: 10,
       },
+      testCommands: [],
+      testDirs: [],
+      impactAnalysis: false,
+      impactAnalysisMaxFiles: 50,
+      impactAnalysisTimeout: 5000,
     };
     expect(config.bashDetection).toBe(true);
     expect(config.completionAudit).toBe(false);
@@ -384,5 +390,148 @@ describe('BashAnalysisResult', () => {
       writeTargets: [],
     };
     expect(result.writeTargets).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TddGateConfig — new fields (testCommands, testDirs, impactAnalysis)
+// ---------------------------------------------------------------------------
+describe('TddGateConfig new fields', () => {
+  it('accepts testCommands string array', () => {
+    const config: TddGateConfig = {
+      languages: { typescript: { enabled: true } },
+      exempt: { extensions: [], paths: [] },
+      bashDetection: true,
+      completionAudit: false,
+      circuitBreaker: { preToolUse: 20, stop: 10 },
+      testCommands: ['vitest run', 'jest', 'npm test'],
+      testDirs: ['src'],
+      impactAnalysis: false,
+      impactAnalysisMaxFiles: 50,
+      impactAnalysisTimeout: 5000,
+    };
+    expect(config.testCommands).toEqual(['vitest run', 'jest', 'npm test']);
+    expect(config.testCommands).toHaveLength(3);
+  });
+
+  it('accepts empty testCommands array', () => {
+    const config: TddGateConfig = {
+      languages: {},
+      exempt: { extensions: [], paths: [] },
+      bashDetection: false,
+      completionAudit: false,
+      circuitBreaker: { preToolUse: 10, stop: 5 },
+      testCommands: [],
+      testDirs: [],
+      impactAnalysis: false,
+      impactAnalysisMaxFiles: 50,
+      impactAnalysisTimeout: 5000,
+    };
+    expect(config.testCommands).toHaveLength(0);
+  });
+
+  it('accepts testDirs string array', () => {
+    const config: TddGateConfig = {
+      languages: {},
+      exempt: { extensions: [], paths: [] },
+      bashDetection: false,
+      completionAudit: false,
+      circuitBreaker: { preToolUse: 10, stop: 5 },
+      testCommands: [],
+      testDirs: ['src', 'test', '__tests__'],
+      impactAnalysis: false,
+      impactAnalysisMaxFiles: 50,
+      impactAnalysisTimeout: 5000,
+    };
+    expect(config.testDirs).toEqual(['src', 'test', '__tests__']);
+    expect(config.testDirs).toHaveLength(3);
+  });
+
+  it('accepts impactAnalysis boolean and related numeric fields', () => {
+    const config: TddGateConfig = {
+      languages: {},
+      exempt: { extensions: [], paths: [] },
+      bashDetection: false,
+      completionAudit: false,
+      circuitBreaker: { preToolUse: 10, stop: 5 },
+      testCommands: [],
+      testDirs: [],
+      impactAnalysis: true,
+      impactAnalysisMaxFiles: 100,
+      impactAnalysisTimeout: 10000,
+    };
+    expect(config.impactAnalysis).toBe(true);
+    expect(config.impactAnalysisMaxFiles).toBe(100);
+    expect(config.impactAnalysisTimeout).toBe(10000);
+  });
+
+  it('coexists with all original fields', () => {
+    const config: TddGateConfig = {
+      languages: {
+        typescript: { enabled: true },
+        python: { enabled: false },
+      },
+      exempt: {
+        extensions: ['.md', '.json'],
+        paths: ['dist/', 'node_modules/'],
+      },
+      bashDetection: true,
+      completionAudit: true,
+      circuitBreaker: { preToolUse: 20, stop: 10 },
+      testCommands: ['vitest run'],
+      testDirs: ['src'],
+      impactAnalysis: true,
+      impactAnalysisMaxFiles: 50,
+      impactAnalysisTimeout: 5000,
+    };
+    // Verify all original fields still work
+    expect(config.languages['typescript'].enabled).toBe(true);
+    expect(config.exempt.extensions).toContain('.md');
+    expect(config.bashDetection).toBe(true);
+    expect(config.completionAudit).toBe(true);
+    expect(config.circuitBreaker.preToolUse).toBe(20);
+    // Verify new fields
+    expect(config.testCommands).toEqual(['vitest run']);
+    expect(config.testDirs).toEqual(['src']);
+    expect(config.impactAnalysis).toBe(true);
+    expect(config.impactAnalysisMaxFiles).toBe(50);
+    expect(config.impactAnalysisTimeout).toBe(5000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ImpactResult
+// ---------------------------------------------------------------------------
+describe('ImpactResult', () => {
+  it('has filePath, dependents, and missingTests fields', () => {
+    const result: ImpactResult = {
+      filePath: 'src/utils.ts',
+      dependents: ['src/index.ts', 'src/gate.ts'],
+      missingTests: ['src/utils.test.ts'],
+    };
+    expect(result.filePath).toBe('src/utils.ts');
+    expect(result.dependents).toEqual(['src/index.ts', 'src/gate.ts']);
+    expect(result.missingTests).toEqual(['src/utils.test.ts']);
+  });
+
+  it('accepts empty dependents and missingTests arrays', () => {
+    const result: ImpactResult = {
+      filePath: 'src/fully-tested.ts',
+      dependents: [],
+      missingTests: [],
+    };
+    expect(result.dependents).toHaveLength(0);
+    expect(result.missingTests).toHaveLength(0);
+  });
+
+  it('handles file with many dependents', () => {
+    const dependents = Array.from({ length: 20 }, (_, i) => `src/mod${i}.ts`);
+    const result: ImpactResult = {
+      filePath: 'src/core.ts',
+      dependents,
+      missingTests: ['src/core.test.ts'],
+    };
+    expect(result.dependents).toHaveLength(20);
+    expect(result.missingTests).toHaveLength(1);
   });
 });
