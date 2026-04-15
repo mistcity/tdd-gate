@@ -1,0 +1,15 @@
+{
+  "name": "mistcity",
+  "description": "Claude Code plugins by mistcity",
+  "owner": {
+    "name": "mistcity"
+  },
+  "plugins": [
+    {
+      "name": "tdd-gate",
+      "description": "Zero-cost, full-coverage TDD enforcement for Claude Code",
+      "version": "0.1.1",
+      "source": "./"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "tdd-gate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Zero-cost, full-coverage TDD enforcement for Claude Code",
   "author": {
     "name": "mistcity"
