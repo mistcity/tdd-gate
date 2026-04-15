@@ -1,9 +1,9 @@
 /**
- * Tests for the Stop handler — completion audit logic with impact analysis.
+ * Tests for the Stop handler — completion audit logic with impact analysis
+ * and observe mode summary generation.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import path from 'path';
 import type { TddGateConfig, ImpactResult } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -84,8 +84,6 @@ function createStubJournal(hasRun = false, appendFailed = false) {
     getViolations() { return violations; },
     getImpactViolations() { return impactViolations; },
     hasAppendFailed() { return appendFailed; },
-    _violations: violations,
-    _impactViolations: impactViolations,
   } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
@@ -689,7 +687,7 @@ describe('handleStop — observe mode', () => {
       createStubCircuitBreaker(),
     );
 
-    expect(journal._violations.length).toBeGreaterThan(0);
+    expect(journal.getViolations().length).toBeGreaterThan(0);
   });
 
   it('records impact violations in journal in observe mode', () => {
@@ -714,7 +712,7 @@ describe('handleStop — observe mode', () => {
       createStubCircuitBreaker(),
     );
 
-    expect(journal._impactViolations.length).toBeGreaterThan(0);
+    expect(journal.getImpactViolations().length).toBeGreaterThan(0);
   });
 
   it('builds summary from in-memory data without reading journal back', () => {

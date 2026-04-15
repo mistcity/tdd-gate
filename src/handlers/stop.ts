@@ -115,10 +115,6 @@ export function handleStop(
       }
     }
 
-    if (directViolations.length === 0 && impactViolationList.length === 0) {
-      return { action: 'allow' };
-    }
-
     const lines: string[] = [];
     lines.push(`[tdd-gate audit] This message: ${directViolations.length} TDD violation(s), ${impactViolationList.length} impact violation(s)`);
     lines.push('');

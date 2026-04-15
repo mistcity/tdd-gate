@@ -1,6 +1,6 @@
 /**
  * Tests for Journal — test/implementation edit order tracking.
- * Written first (TDD RED phase).
+ * Covers: record/read entries, violations, impact violations, append failures.
  */
 
 import fs from 'fs';
@@ -398,13 +398,18 @@ describe('Journal', () => {
       expect(violations).toHaveLength(0);
     });
 
-    it('uses empty string fallback for undefined parts via null-coalescing', () => {
-      // Valid entry should have proper defaults
-      journal.recordImpactViolation('/src/auth.ts', '/src/api.ts', 'api.test.ts');
+    it('returns correct results when valid and malformed entries are interleaved', () => {
+      // Mix valid entries, malformed entries, and non-IMPACT_VIOLATION entries
+      journal.recordImpactViolation('/src/a.ts', '/src/b.ts', 'b.test.ts');
+      fs.appendFileSync(journalPath, `${Date.now()} IMPACT_VIOLATION /src/bad.ts\n`);
+      journal.recordImpactViolation('/src/c.ts', '/src/d.ts', 'd.test.ts');
+      fs.appendFileSync(journalPath, `${Date.now()} IMPACT_VIOLATION /src/x.ts|/src/y.ts\n`);
+      journal.recordTest('/src/e.test.ts');
+
       const violations = journal.getImpactViolations();
-      expect(violations[0].changedFile).toBe('/src/auth.ts');
-      expect(violations[0].dependent).toBe('/src/api.ts');
-      expect(violations[0].missingTest).toBe('api.test.ts');
+      expect(violations).toHaveLength(2);
+      expect(violations[0].changedFile).toBe('/src/a.ts');
+      expect(violations[1].changedFile).toBe('/src/c.ts');
     });
   });
 

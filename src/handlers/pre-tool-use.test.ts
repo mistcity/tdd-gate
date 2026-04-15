@@ -1,5 +1,6 @@
 /**
- * Tests for the PreToolUse handler — core TDD enforcement logic.
+ * Tests for the PreToolUse handler — core TDD enforcement logic
+ * including observe mode violation recording and circuit breaker diagnostics.
  */
 
 import { describe, it, expect, vi } from 'vitest';

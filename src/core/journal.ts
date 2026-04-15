@@ -130,21 +130,16 @@ export class Journal {
 
   /** Get all IMPACT_VIOLATION entries from the journal. */
   getImpactViolations(): Array<{ changedFile: string; dependent: string; missingTest: string }> {
-    const entries = this.getEntries();
-    return entries
-      .filter(e => {
-        if (e.type !== 'IMPACT_VIOLATION') return false;
-        const parts = e.filePath.split('|');
-        return parts.length >= 3;
-      })
-      .map(e => {
-        const parts = e.filePath.split('|');
-        return {
-          changedFile: parts[0] ?? '',
-          dependent: parts[1] ?? '',
-          missingTest: parts[2] ?? '',
-        };
-      });
+    return this.getEntries().flatMap(e => {
+      if (e.type !== 'IMPACT_VIOLATION') return [];
+      const parts = e.filePath.split('|');
+      if (parts.length < 3) return [];
+      return [{
+        changedFile: parts[0] ?? '',
+        dependent: parts[1] ?? '',
+        missingTest: parts[2] ?? '',
+      }];
+    });
   }
 
   /** Check if any journal append operation has failed. */

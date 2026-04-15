@@ -1,15 +1,15 @@
 /**
  * Tests for config loader — DEFAULT_CONFIG and loadConfig().
- * Written first (TDD RED phase).
  *
- * Covers: override(), overrideArray(), isPlainObject() helpers via loadConfig() integration.
+ * Covers: override(), overrideArray(), isPlainObject() helpers via loadConfig() integration,
+ * and mode validation with fallback behavior.
  */
 
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DEFAULT_CONFIG, loadConfig } from './config.js';
+import { DEFAULT_CONFIG, VALID_MODES, loadConfig } from './config.js';
 import type { TddGateConfig } from '../types.js';
 
 describe('DEFAULT_CONFIG', () => {
@@ -375,6 +375,12 @@ describe('loadConfig', () => {
 
   it('has mode enforce by default', () => {
     expect(DEFAULT_CONFIG.mode).toBe('enforce');
+  });
+
+  it('VALID_MODES contains exactly enforce and observe', () => {
+    expect(VALID_MODES).toContain('enforce');
+    expect(VALID_MODES).toContain('observe');
+    expect(VALID_MODES).toHaveLength(2);
   });
 
   it('returns default mode enforce when no config file', () => {

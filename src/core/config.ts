@@ -51,6 +51,9 @@ export const DEFAULT_CONFIG: TddGateConfig = {
   mode: 'enforce',
 };
 
+/** Valid values for the `mode` config field. */
+export const VALID_MODES: ReadonlyArray<TddGateConfig['mode']> = ['enforce', 'observe'];
+
 // ---------------------------------------------------------------------------
 // Config merge helpers
 // ---------------------------------------------------------------------------
@@ -126,15 +129,14 @@ export function loadConfig(cwd: string): TddGateConfig {
       }
     }
 
-    // Validate mode: must be 'enforce' or 'observe', fallback to 'enforce'
+    // Validate mode: must be a VALID_MODES value, fallback to 'enforce'
     const rawMode = override(user, 'mode', 'string', DEFAULT_CONFIG.mode);
-    const mode: TddGateConfig['mode'] = (rawMode === 'enforce' || rawMode === 'observe')
-      ? rawMode
-      : DEFAULT_CONFIG.mode;
+    const isValidMode = (VALID_MODES as readonly string[]).includes(rawMode);
+    const mode: TddGateConfig['mode'] = isValidMode ? rawMode as TddGateConfig['mode'] : DEFAULT_CONFIG.mode;
 
-    if (rawMode !== 'enforce' && rawMode !== 'observe') {
+    if (!isValidMode) {
       process.stderr.write(
-        `[tdd-gate] invalid mode "${String(rawMode)}" in config, falling back to "enforce". Valid values: "enforce", "observe"\n`
+        `[tdd-gate] invalid mode "${String(rawMode)}" in config, falling back to "enforce". Valid values: ${VALID_MODES.map(m => `"${m}"`).join(', ')}\n`
       );
     }
 
