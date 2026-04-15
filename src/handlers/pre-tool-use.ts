@@ -58,6 +58,9 @@ function checkTdd(
 
 // ---------------------------------------------------------------------------
 // Handle Write / Edit / MultiEdit tools
+//
+// MultiEdit uses the same `file_path` field as Write/Edit in its tool_input.
+// If file_path is absent (e.g. malformed input), we fail-open (allow).
 // ---------------------------------------------------------------------------
 
 function handleFileWrite(

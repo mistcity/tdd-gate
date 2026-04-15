@@ -342,6 +342,47 @@ describe('PreToolUse handler — Circuit breaker', () => {
 });
 
 // ===========================================================================
+// MultiEdit tool — dedicated coverage
+// ===========================================================================
+
+describe('PreToolUse handler — MultiEdit tool', () => {
+  it('denies MultiEdit on impl file without test in journal', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('MultiEdit', { file_path: '/project/src/service.ts' });
+
+    const result = callHandler(input, testConfig, journal, cb);
+
+    expect(result.action).toBe('deny');
+    if (result.action === 'deny') {
+      expect(result.reason).toContain('service.test.ts');
+      expect(result.reason).toContain('/project/src/service.ts');
+    }
+  });
+
+  it('allows MultiEdit on test file and records in journal', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('MultiEdit', { file_path: '/project/src/service.test.ts' });
+
+    const result = callHandler(input, testConfig, journal, cb);
+
+    expect(result.action).toBe('allow');
+    expect(journal.tests).toContain('/project/src/service.test.ts');
+  });
+
+  it('allows MultiEdit with empty tool_input (no file_path) — fail-open', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('MultiEdit', {});
+
+    const result = callHandler(input, testConfig, journal, cb);
+
+    expect(result.action).toBe('allow');
+  });
+});
+
+// ===========================================================================
 // Edge cases
 // ===========================================================================
 
