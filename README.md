@@ -33,9 +33,25 @@ tdd-gate fixes this at the tool level. Before Claude can write or edit an implem
 | Completion audit | **Yes** | No | No |
 | Response time | **<10ms** | ~1-3s | <10ms |
 | Languages | **10** | 8 | Shell-based |
+| Impact analysis | **Yes** | No | No |
 | Test quality check | No | **Yes** | No |
 
 tdd-gate and tdd-guard are complementary, not competing. tdd-gate enforces that tests exist; tdd-guard can verify that tests are meaningful. Use both for maximum coverage.
+
+---
+
+## Impact Analysis (v0.2.0)
+
+tdd-gate doesn't just check that *your* tests exist — it checks that tests for files **depending on your changes** were also run.
+
+```
+Claude modifies auth.ts → runs auth.test.ts → tries to finish
+                                                    ↓
+                                    tdd-gate: "user-service.ts depends on
+                                    auth.ts. Run user-service.test.ts first."
+```
+
+This catches the #1 source of regressions: changing a module without testing its consumers. Zero API cost.
 
 ---
 
@@ -132,6 +148,11 @@ To customize, create `tdd-gate.config.json` in your project root:
 | `completionAudit` | `true` | Audit impl coverage when Claude stops |
 | `circuitBreaker.preToolUse` | `1000` | Max blocks before auto-allow (PreToolUse) |
 | `circuitBreaker.stop` | `20` | Max blocks before auto-allow (Stop) |
+| `testDirs` | `["tests","test","spec","__tests__"]` | Directories to search for test files |
+| `testCommands` | `[]` | Additional test commands to recognize |
+| `impactAnalysis` | `true` | Analyze import dependencies at completion |
+| `impactAnalysisMaxFiles` | `500` | Max files to scan for dependencies |
+| `impactAnalysisTimeout` | `5000` | Timeout (ms) for dependency scan |
 
 When `exempt.paths` is set, any file path containing one of those strings is skipped — useful for generated code, migrations, or third-party directories.
 
