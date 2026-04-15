@@ -38,6 +38,11 @@ export const DEFAULT_CONFIG: TddGateConfig = {
     preToolUse: 1000,
     stop: 20,
   },
+  testCommands: [],
+  testDirs: ['tests', 'test', 'spec', '__tests__'],
+  impactAnalysis: true,
+  impactAnalysisMaxFiles: 500,
+  impactAnalysisTimeout: 5000,
 };
 
 // ---------------------------------------------------------------------------
@@ -112,7 +117,32 @@ export function loadConfig(cwd: string): TddGateConfig {
       }
     }
 
-    return { languages, exempt, bashDetection, completionAudit, circuitBreaker };
+    // Array overrides: user replaces default
+    const testCommands = Array.isArray(user['testCommands'])
+      ? user['testCommands'] as string[]
+      : DEFAULT_CONFIG.testCommands;
+
+    const testDirs = Array.isArray(user['testDirs'])
+      ? user['testDirs'] as string[]
+      : DEFAULT_CONFIG.testDirs;
+
+    // Scalar overrides for impact analysis
+    const impactAnalysis = typeof user['impactAnalysis'] === 'boolean'
+      ? user['impactAnalysis']
+      : DEFAULT_CONFIG.impactAnalysis;
+
+    const impactAnalysisMaxFiles = typeof user['impactAnalysisMaxFiles'] === 'number'
+      ? user['impactAnalysisMaxFiles']
+      : DEFAULT_CONFIG.impactAnalysisMaxFiles;
+
+    const impactAnalysisTimeout = typeof user['impactAnalysisTimeout'] === 'number'
+      ? user['impactAnalysisTimeout']
+      : DEFAULT_CONFIG.impactAnalysisTimeout;
+
+    return {
+      languages, exempt, bashDetection, completionAudit, circuitBreaker,
+      testCommands, testDirs, impactAnalysis, impactAnalysisMaxFiles, impactAnalysisTimeout,
+    };
   } catch {
     return DEFAULT_CONFIG;
   }

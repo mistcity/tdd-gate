@@ -33,6 +33,11 @@ const testConfig: TddGateConfig = {
   bashDetection: true,
   completionAudit: true,
   circuitBreaker: { preToolUse: 1000, stop: 20 },
+  testCommands: [],
+  testDirs: ['tests', 'test', 'spec', '__tests__'],
+  impactAnalysis: true,
+  impactAnalysisMaxFiles: 500,
+  impactAnalysisTimeout: 5000,
 };
 
 // ---------------------------------------------------------------------------

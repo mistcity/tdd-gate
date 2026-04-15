@@ -49,6 +49,26 @@ describe('DEFAULT_CONFIG', () => {
   it('has empty exempt paths by default', () => {
     expect(DEFAULT_CONFIG.exempt.paths).toEqual([]);
   });
+
+  it('has empty testCommands by default', () => {
+    expect(DEFAULT_CONFIG.testCommands).toEqual([]);
+  });
+
+  it('has expected testDirs defaults', () => {
+    expect(DEFAULT_CONFIG.testDirs).toEqual(['tests', 'test', 'spec', '__tests__']);
+  });
+
+  it('has impactAnalysis true by default', () => {
+    expect(DEFAULT_CONFIG.impactAnalysis).toBe(true);
+  });
+
+  it('has impactAnalysisMaxFiles 500 by default', () => {
+    expect(DEFAULT_CONFIG.impactAnalysisMaxFiles).toBe(500);
+  });
+
+  it('has impactAnalysisTimeout 5000 by default', () => {
+    expect(DEFAULT_CONFIG.impactAnalysisTimeout).toBe(5000);
+  });
 });
 
 describe('loadConfig', () => {
@@ -181,5 +201,139 @@ describe('loadConfig', () => {
     expect(result.completionAudit).toBe(true);
     expect(Object.keys(result.languages)).toHaveLength(10);
     expect(result.exempt.extensions).toEqual(DEFAULT_CONFIG.exempt.extensions);
+  });
+
+  // -------------------------------------------------------------------------
+  // New fields: testCommands, testDirs, impactAnalysis, etc.
+  // -------------------------------------------------------------------------
+
+  it('returns default testCommands (empty) when no config file', () => {
+    const result = loadConfig(tmpDir);
+    expect(result.testCommands).toEqual([]);
+  });
+
+  it('returns default testDirs when no config file', () => {
+    const result = loadConfig(tmpDir);
+    expect(result.testDirs).toEqual(['tests', 'test', 'spec', '__tests__']);
+  });
+
+  it('returns default impactAnalysis=true when no config file', () => {
+    const result = loadConfig(tmpDir);
+    expect(result.impactAnalysis).toBe(true);
+  });
+
+  it('returns default impactAnalysisMaxFiles=500 when no config file', () => {
+    const result = loadConfig(tmpDir);
+    expect(result.impactAnalysisMaxFiles).toBe(500);
+  });
+
+  it('returns default impactAnalysisTimeout=5000 when no config file', () => {
+    const result = loadConfig(tmpDir);
+    expect(result.impactAnalysisTimeout).toBe(5000);
+  });
+
+  it('replaces testCommands with user values', () => {
+    const userConfig = { testCommands: ['vitest run', 'jest'] };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.testCommands).toEqual(['vitest run', 'jest']);
+  });
+
+  it('replaces testDirs with user values', () => {
+    const userConfig = { testDirs: ['src/__tests__', 'e2e'] };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.testDirs).toEqual(['src/__tests__', 'e2e']);
+  });
+
+  it('ignores testCommands if not an array', () => {
+    const userConfig = { testCommands: 'npm test' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.testCommands).toEqual([]);
+  });
+
+  it('ignores testDirs if not an array', () => {
+    const userConfig = { testDirs: 'tests' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.testDirs).toEqual(['tests', 'test', 'spec', '__tests__']);
+  });
+
+  it('handles impactAnalysis=false override', () => {
+    const userConfig = { impactAnalysis: false };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.impactAnalysis).toBe(false);
+  });
+
+  it('ignores impactAnalysis if not boolean', () => {
+    const userConfig = { impactAnalysis: 'yes' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.impactAnalysis).toBe(true);
+  });
+
+  it('handles impactAnalysisMaxFiles override', () => {
+    const userConfig = { impactAnalysisMaxFiles: 200 };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.impactAnalysisMaxFiles).toBe(200);
+  });
+
+  it('ignores impactAnalysisMaxFiles if not number', () => {
+    const userConfig = { impactAnalysisMaxFiles: '200' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.impactAnalysisMaxFiles).toBe(500);
+  });
+
+  it('handles impactAnalysisTimeout override', () => {
+    const userConfig = { impactAnalysisTimeout: 10000 };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.impactAnalysisTimeout).toBe(10000);
+  });
+
+  it('ignores impactAnalysisTimeout if not number', () => {
+    const userConfig = { impactAnalysisTimeout: true };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.impactAnalysisTimeout).toBe(5000);
+  });
+
+  it('disabling impactAnalysis preserves other impact fields', () => {
+    const userConfig = {
+      impactAnalysis: false,
+      impactAnalysisMaxFiles: 100,
+      impactAnalysisTimeout: 3000,
+    };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.impactAnalysis).toBe(false);
+    expect(result.impactAnalysisMaxFiles).toBe(100);
+    expect(result.impactAnalysisTimeout).toBe(3000);
   });
 });
