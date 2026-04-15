@@ -68,7 +68,7 @@ function collectMatches(
 // Public API
 // ---------------------------------------------------------------------------
 
-export function analyzeBashCommand(command: string): BashAnalysisResult {
+export function analyzeBashCommand(command: string, customTestCommands: string[] = []): BashAnalysisResult {
   try {
     if (typeof command !== 'string' || command.trim() === '') {
       return { isTestCommand: false, writeTargets: [] };
@@ -76,7 +76,10 @@ export function analyzeBashCommand(command: string): BashAnalysisResult {
 
     // --- Test command detection -------------------------------------------
     const normalized = command.trim();
-    const isTestCommand = TEST_COMMANDS.some(
+    const allTestCommands = customTestCommands.length > 0
+      ? [...TEST_COMMANDS, ...customTestCommands]
+      : TEST_COMMANDS;
+    const isTestCommand = allTestCommands.some(
       (tc) => normalized === tc || normalized.startsWith(tc + ' '),
     );
 

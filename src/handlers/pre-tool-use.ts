@@ -85,7 +85,7 @@ function handleBash(
   const command = input.tool_input.command;
   if (!command) return ALLOW;
 
-  const analysis = analyzeBashCommand(command);
+  const analysis = analyzeBashCommand(command, config.testCommands);
 
   // Test command → record and allow
   if (analysis.isTestCommand) {

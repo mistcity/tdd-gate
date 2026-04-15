@@ -130,6 +130,32 @@ describe('analyzeBashCommand', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Custom test commands
+  // -------------------------------------------------------------------------
+
+  describe('custom test commands', () => {
+    it('recognizes a custom command: make test', () => {
+      expect(analyzeBashCommand('make test', ['make test']).isTestCommand).toBe(true);
+    });
+
+    it('recognizes a custom command with extra args: make test VERBOSE=1', () => {
+      expect(analyzeBashCommand('make test VERBOSE=1', ['make test']).isTestCommand).toBe(true);
+    });
+
+    it('recognizes a custom script: ./run_tests.sh', () => {
+      expect(analyzeBashCommand('./run_tests.sh', ['./run_tests.sh']).isTestCommand).toBe(true);
+    });
+
+    it('built-in commands still work with empty custom list', () => {
+      expect(analyzeBashCommand('npm test', []).isTestCommand).toBe(true);
+    });
+
+    it('does not partial-match custom commands: make testing-build vs make test', () => {
+      expect(analyzeBashCommand('make testing-build', ['make test']).isTestCommand).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Non-write, non-test commands
   // -------------------------------------------------------------------------
 
