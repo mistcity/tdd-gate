@@ -6,8 +6,11 @@
  * real-world import statements for the given language.
  */
 
-import { describe, it, expect } from 'vitest';
-import { buildImportPattern, LANGUAGE_BY_EXT } from './impact-analyzer.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { buildImportPattern, LANGUAGE_BY_EXT, findDependents } from './impact-analyzer.js';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 // ---------------------------------------------------------------------------
 // Helper: test a pattern against a string using grep -E compatible regex
@@ -331,5 +334,126 @@ describe('buildImportPattern — default fallback', () => {
   it('matches when the basename appears in the line', () => {
     const pattern = buildImportPattern('auth', 'haskell');
     expect(matches(pattern, 'import Auth (auth)')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findDependents — real filesystem tests
+// ---------------------------------------------------------------------------
+
+describe('findDependents', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'tdd-gate-findDependents-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('finds a TypeScript file that imports the changed file', () => {
+    // Create the source file (the one being changed)
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    // Create a file that imports auth
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";\nconsole.log(login());',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'app.ts'));
+  });
+
+  it('excludes test files from results', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    // A non-test importer
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";',
+    );
+    // A test file that imports auth — should be excluded
+    writeFileSync(
+      join(tmpDir, 'auth.test.ts'),
+      'import { login } from "./auth";\nit("works", () => {});',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'app.ts'));
+    expect(result).not.toContain(join(tmpDir, 'auth.test.ts'));
+  });
+
+  it('returns empty array when no dependents found', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    writeFileSync(join(tmpDir, 'other.ts'), 'console.log("no imports here");');
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array on grep failure (nonexistent directory) — fail-open', () => {
+    const result = findDependents(
+      '/nonexistent/path/auth.ts',
+      'typescript',
+      '/nonexistent/path',
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('excludes the file itself from results', () => {
+    // A file that references its own basename in an import-like line
+    writeFileSync(
+      join(tmpDir, 'auth.ts'),
+      'export function login() {}\n// from "./auth"',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).not.toContain(join(tmpDir, 'auth.ts'));
+  });
+
+  it('respects maxFiles limit', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    // Create 5 files that all import auth
+    for (let i = 0; i < 5; i++) {
+      writeFileSync(
+        join(tmpDir, `consumer${i}.ts`),
+        `import { login } from "./auth";`,
+      );
+    }
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 2, timeout: 5000 },
+    );
+
+    expect(result.length).toBeLessThanOrEqual(2);
   });
 });

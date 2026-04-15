@@ -7,7 +7,7 @@
 
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import type { ImpactResult } from '../types.js';
+import type { ImpactResult, LanguageDefinition } from '../types.js';
 import { LANGUAGES } from './file-classifier.js';
 
 // ---------------------------------------------------------------------------
@@ -80,5 +80,74 @@ export function buildImportPattern(basename: string, language: string): string {
 
     default:
       return basename;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// findDependents
+// ---------------------------------------------------------------------------
+
+interface FindDependentsOptions {
+  maxFiles: number;
+  timeout: number;
+}
+
+/**
+ * Uses grep to find files in the project that import a given module.
+ *
+ * @param filePath    - Absolute path of the file whose dependents we want
+ * @param language    - Language name (e.g. "typescript", "python")
+ * @param projectRoot - Root directory to search in
+ * @param options     - maxFiles limit and timeout in ms
+ * @returns Array of absolute file paths that import the given module (fail-open: returns [] on error)
+ */
+export function findDependents(
+  filePath: string,
+  language: string,
+  projectRoot: string,
+  options: FindDependentsOptions,
+): string[] {
+  const basename = path.basename(filePath, path.extname(filePath));
+  const ext = path.extname(filePath);
+  const pattern = buildImportPattern(basename, language);
+
+  try {
+    const stdout = execFileSync(
+      'grep',
+      ['-rl', '--include', `*${ext}`, '-E', pattern, projectRoot],
+      {
+        timeout: options.timeout,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
+
+    const files = stdout.trim().split('\n').filter(Boolean);
+
+    // Filter out the file itself
+    const selfResolved = path.resolve(filePath);
+
+    // Look up the language definition for isTestFile
+    const langDef: LanguageDefinition | undefined = (() => {
+      const langName = LANGUAGE_BY_EXT.get(ext);
+      if (!langName) return undefined;
+      return LANGUAGES.find((l) => l.name === langName);
+    })();
+
+    const filtered = files.filter((f) => {
+      // Exclude the file itself
+      if (path.resolve(f) === selfResolved) return false;
+
+      // Exclude test files
+      if (langDef && langDef.isTestFile(path.basename(f))) return false;
+
+      return true;
+    });
+
+    // Limit to maxFiles
+    return filtered.slice(0, options.maxFiles);
+  } catch {
+    // Fail-open: grep exit code 1 means "no matches", other errors also return []
+    return [];
   }
 }
