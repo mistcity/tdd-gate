@@ -65,10 +65,14 @@ The journal tracks which implementation files were written during a message. The
 ## Installation
 
 ```bash
-claude plugin add mistcity/tdd-gate
+# Add the marketplace
+claude plugin marketplace add mistcity/tdd-gate
+
+# Install the plugin
+claude plugin install tdd-gate
 ```
 
-No configuration file required. Works immediately after install.
+Restart Claude Code after installation. No configuration file required — works immediately.
 
 ---
 
