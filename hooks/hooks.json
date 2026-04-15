@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "export PATH=\"$HOME/.nvm/versions/node/v$(ls \"$HOME/.nvm/versions/node\" 2>/dev/null | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)/bin:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH\"; diff -q \"${CLAUDE_PLUGIN_ROOT}/package.json\" \"${CLAUDE_PLUGIN_DATA}/package.json\" >/dev/null 2>&1 && test -f \"${CLAUDE_PLUGIN_DATA}/dist/index.js\" || (cp \"${CLAUDE_PLUGIN_ROOT}/package.json\" \"${CLAUDE_PLUGIN_DATA}/\" && cp \"${CLAUDE_PLUGIN_ROOT}/tsconfig.json\" \"${CLAUDE_PLUGIN_DATA}/\" && cp -r \"${CLAUDE_PLUGIN_ROOT}/src\" \"${CLAUDE_PLUGIN_DATA}/\" && cd \"${CLAUDE_PLUGIN_DATA}\" && npm install --ignore-scripts 2>/dev/null && npx tsc 2>/dev/null) || true",
+            "command": "export PATH=\"$HOME/.nvm/versions/node/v$(ls \"$HOME/.nvm/versions/node\" 2>/dev/null | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)/bin:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH\"; if ! command -v node >/dev/null 2>&1; then echo '{\"continue\":true,\"suppressOutput\":false,\"additionalContext\":\"[tdd-gate] ERROR: Node.js not found. tdd-gate requires Node.js >= 18. Install from https://nodejs.org\"}'; exit 0; fi; diff -q \"${CLAUDE_PLUGIN_ROOT}/package.json\" \"${CLAUDE_PLUGIN_DATA}/package.json\" >/dev/null 2>&1 && test -f \"${CLAUDE_PLUGIN_DATA}/dist/index.js\" || (cp \"${CLAUDE_PLUGIN_ROOT}/package.json\" \"${CLAUDE_PLUGIN_DATA}/\" && cp \"${CLAUDE_PLUGIN_ROOT}/tsconfig.json\" \"${CLAUDE_PLUGIN_DATA}/\" && cp -r \"${CLAUDE_PLUGIN_ROOT}/src\" \"${CLAUDE_PLUGIN_DATA}/\" && cd \"${CLAUDE_PLUGIN_DATA}\" && npm install --ignore-scripts 2>/dev/null && npx tsc 2>/dev/null) || true",
             "timeout": 60
           }
         ]

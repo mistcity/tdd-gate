@@ -78,6 +78,11 @@ The journal tracks which implementation files were written during a message. The
 
 ---
 
+## Prerequisites
+
+- **Node.js >= 18** (required for building and running the plugin)
+- Claude Code installed
+
 ## Installation
 
 ```bash
@@ -88,7 +93,7 @@ claude plugin marketplace add mistcity/tdd-gate
 claude plugin install tdd-gate
 ```
 
-Restart Claude Code after installation. No configuration file required — works immediately.
+Restart Claude Code after installation. The plugin auto-builds on first launch (takes ~10 seconds). No configuration file required — works immediately.
 
 ---
 
