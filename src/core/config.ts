@@ -132,7 +132,12 @@ export function loadConfig(cwd: string): TddGateConfig {
       impactAnalysisMaxFiles: override(user, 'impactAnalysisMaxFiles', 'number', DEFAULT_CONFIG.impactAnalysisMaxFiles),
       impactAnalysisTimeout:  override(user, 'impactAnalysisTimeout', 'number', DEFAULT_CONFIG.impactAnalysisTimeout),
     };
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      process.stderr.write(
+        `[tdd-gate] failed to load tdd-gate.config.json (using defaults): ${err instanceof Error ? err.message : String(err)}\n`
+      );
+    }
     return DEFAULT_CONFIG;
   }
 }

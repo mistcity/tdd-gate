@@ -6,7 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CircuitBreaker } from './circuit-breaker.js';
 
 describe('CircuitBreaker', () => {
@@ -76,6 +76,36 @@ describe('CircuitBreaker', () => {
       const badCb = new CircuitBreaker('/nonexistent/deep/path/counter', limit);
       expect(() => badCb.check()).not.toThrow();
       expect(badCb.check()).toBe(false);
+    });
+
+    it('logs to stderr on non-ENOENT read error (Finding #7)', () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
+        const err = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+        err.code = 'EACCES';
+        throw err;
+      });
+      try {
+        cb.check();
+        expect(stderrSpy).toHaveBeenCalled();
+        const msg = stderrSpy.mock.calls[0]?.[0] as string;
+        expect(msg).toContain('[tdd-gate]');
+        expect(msg).toContain('circuit breaker read failed');
+      } finally {
+        readSpy.mockRestore();
+        stderrSpy.mockRestore();
+      }
+    });
+
+    it('does NOT log to stderr on ENOENT read (file not yet created)', () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        // First call on a new counter — ENOENT is expected, should not log
+        cb.check();
+        expect(stderrSpy).not.toHaveBeenCalled();
+      } finally {
+        stderrSpy.mockRestore();
+      }
     });
   });
 

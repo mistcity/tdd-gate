@@ -12,6 +12,7 @@ import path from 'path';
 
 export class Journal {
   private filePath: string;
+  private appendFailed = false;
 
   constructor(journalPath: string) {
     this.filePath = journalPath;
@@ -38,6 +39,7 @@ export class Journal {
    * Returns false on any error.
    */
   hasTestFor(expectedTestPaths: string[]): boolean {
+    if (this.appendFailed) return true;
     try {
       const entries = this.getEntries();
       const expectedBasenames = expectedTestPaths.map(p => path.basename(p));
@@ -56,6 +58,7 @@ export class Journal {
    * Returns false on any error.
    */
   hasTestRun(): boolean {
+    if (this.appendFailed) return true;
     try {
       const entries = this.getEntries();
       return entries.some(entry => entry.type === 'TEST_RUN');
@@ -94,7 +97,12 @@ export class Journal {
         }
       }
       return entries;
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        process.stderr.write(
+          `[tdd-gate] journal read failed (fail-open): ${err instanceof Error ? err.message : String(err)}\n`
+        );
+      }
       return [];
     }
   }
@@ -104,8 +112,11 @@ export class Journal {
       const timestamp = Date.now();
       const line = `${timestamp} ${type} ${filePath}\n`;
       fs.appendFileSync(this.filePath, line, 'utf-8');
-    } catch {
-      // Fail silently — journal writes are best-effort
+    } catch (err) {
+      this.appendFailed = true;
+      process.stderr.write(
+        `[tdd-gate] journal write failed (${type} ${filePath}): ${err instanceof Error ? err.message : String(err)}. TDD checks will allow all operations.\n`
+      );
     }
   }
 }

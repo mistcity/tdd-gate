@@ -47,7 +47,9 @@ export class StateManager {
     } catch (err: unknown) {
       const nodeErr = err as NodeJS.ErrnoException;
       if (nodeErr.code !== 'ENOENT') {
-        // Silently ignore all errors — state files are best-effort
+        process.stderr.write(
+          `[tdd-gate] state cleanup failed for ${filePath}: ${err instanceof Error ? err.message : String(err)}\n`
+        );
       }
     }
   }

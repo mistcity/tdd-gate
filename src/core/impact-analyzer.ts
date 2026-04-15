@@ -162,8 +162,14 @@ export function findDependents(
     });
 
     return filtered.slice(0, options.maxFiles);
-  } catch {
-    // Fail-open: grep exit code 1 means "no matches", other errors also return []
+  } catch (err: unknown) {
+    // grep exit code 1 = no matches
+    if (err && typeof err === 'object' && 'status' in err && (err as any).status === 1) {
+      return [];
+    }
+    process.stderr.write(
+      `[tdd-gate] findDependents failed for ${path.basename(filePath)} (fail-open): ${err instanceof Error ? err.message : String(err)}\n`
+    );
     return [];
   }
 }

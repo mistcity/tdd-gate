@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { route } from './index.js';
 import type { PreToolUseInput, UserPromptSubmitInput, StopInput, HookInput } from './types.js';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
+import type { MockInstance } from 'vitest';
 
 // Mock child_process to prevent real git calls from Stop handler
 vi.mock('child_process', () => ({

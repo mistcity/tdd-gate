@@ -8,7 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DEFAULT_CONFIG, loadConfig } from './config.js';
 import type { TddGateConfig } from '../types.js';
 
@@ -163,12 +163,33 @@ describe('loadConfig', () => {
     expect(result.completionAudit).toBe(false);
   });
 
-  it('returns DEFAULT_CONFIG for invalid JSON', () => {
+  it('returns DEFAULT_CONFIG for invalid JSON and logs to stderr (Finding #2)', () => {
     fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), '{ invalid json !!');
 
-    const result = loadConfig(tmpDir);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const result = loadConfig(tmpDir);
+      expect(result).toEqual(DEFAULT_CONFIG);
+      // Parse error should be logged
+      expect(stderrSpy).toHaveBeenCalled();
+      const msg = stderrSpy.mock.calls[0]?.[0] as string;
+      expect(msg).toContain('[tdd-gate]');
+      expect(msg).toContain('failed to load tdd-gate.config.json');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
 
-    expect(result).toEqual(DEFAULT_CONFIG);
+  it('returns DEFAULT_CONFIG without logging when config file is missing (ENOENT)', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const result = loadConfig(tmpDir);
+      expect(result).toEqual(DEFAULT_CONFIG);
+      // ENOENT should NOT log
+      expect(stderrSpy).not.toHaveBeenCalled();
+    } finally {
+      stderrSpy.mockRestore();
+    }
   });
 
   it('returns DEFAULT_CONFIG for non-object JSON (array)', () => {

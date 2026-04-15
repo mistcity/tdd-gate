@@ -6,7 +6,7 @@
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StateManager } from './state.js';
 
 describe('StateManager', () => {
@@ -150,6 +150,43 @@ describe('StateManager', () => {
 
     it('does not throw when no files exist', () => {
       expect(() => mgr.clearAll()).not.toThrow();
+    });
+  });
+
+  describe('deleteFile — non-ENOENT logging (Finding #9)', () => {
+    beforeEach(() => {
+      mgr = new StateManager(sessionId);
+    });
+
+    it('logs to stderr when unlinkSync throws a non-ENOENT error', () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {
+        const err = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+        err.code = 'EACCES';
+        throw err;
+      });
+      try {
+        // clearPerMessage calls deleteFile internally
+        mgr.clearPerMessage();
+        expect(stderrSpy).toHaveBeenCalled();
+        const msg = stderrSpy.mock.calls[0]?.[0] as string;
+        expect(msg).toContain('[tdd-gate]');
+        expect(msg).toContain('state cleanup failed');
+      } finally {
+        unlinkSpy.mockRestore();
+        stderrSpy.mockRestore();
+      }
+    });
+
+    it('does NOT log to stderr when file does not exist (ENOENT)', () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        // Deleting files that don't exist should not log
+        mgr.clearAll();
+        expect(stderrSpy).not.toHaveBeenCalled();
+      } finally {
+        stderrSpy.mockRestore();
+      }
     });
   });
 });

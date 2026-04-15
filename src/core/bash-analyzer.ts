@@ -100,7 +100,10 @@ export function analyzeBashCommand(command: string, customTestCommands: string[]
     });
 
     return { isTestCommand, writeTargets: dedupedTargets };
-  } catch {
+  } catch (err) {
+    process.stderr.write(
+      `[tdd-gate] bash analysis failed (fail-open): ${err instanceof Error ? err.message : String(err)}\n`
+    );
     return { isTestCommand: false, writeTargets: [] };
   }
 }

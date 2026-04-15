@@ -81,8 +81,8 @@ async function main(): Promise<void> {
       default:
         allow();
     }
-  } catch {
-    // Fail-open: never block user due to internal errors
+  } catch (err) {
+    process.stderr.write(`[tdd-gate] internal error (fail-open): ${err instanceof Error ? err.message : String(err)}\n`);
     allow();
   }
 }

@@ -32,7 +32,9 @@ export class CircuitBreaker {
       } catch (err: unknown) {
         const nodeErr = err as NodeJS.ErrnoException;
         if (nodeErr.code !== 'ENOENT') {
-          // Unreadable file — treat as 0
+          process.stderr.write(
+            `[tdd-gate] circuit breaker read failed: ${err instanceof Error ? err.message : String(err)}\n`
+          );
         }
         // ENOENT: file doesn't exist yet, start from 0
       }

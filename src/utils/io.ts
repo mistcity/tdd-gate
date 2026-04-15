@@ -22,7 +22,10 @@ import type { HookInput } from '../types.js';
 export function readStdin(): Promise<string> {
   return new Promise((resolve) => {
     let data = '';
-    const timer = setTimeout(() => resolve(''), 5_000);
+    const timer = setTimeout(() => {
+      process.stderr.write('[tdd-gate] stdin read timed out (fail-open)\n');
+      resolve('');
+    }, 5_000);
 
     process.stdin.setEncoding('utf8');
 
@@ -35,8 +38,9 @@ export function readStdin(): Promise<string> {
       resolve(data);
     });
 
-    process.stdin.on('error', () => {
+    process.stdin.on('error', (err) => {
       clearTimeout(timer);
+      process.stderr.write(`[tdd-gate] stdin error (fail-open): ${err.message}\n`);
       resolve('');
     });
   });

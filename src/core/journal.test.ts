@@ -6,7 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Journal } from './journal.js';
 
 describe('Journal', () => {
@@ -103,6 +103,20 @@ describe('Journal', () => {
       expect(() => j.hasTestFor(['/src/foo.test.ts'])).not.toThrow();
       expect(j.hasTestFor(['/src/foo.test.ts'])).toBe(false);
     });
+
+    it('returns true when append has previously failed (appendFailed flag)', () => {
+      // Use a path where the directory does not exist to force append to fail
+      const badJournal = new Journal('/nonexistent/dir/journal.log');
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        // This append will fail because directory doesn't exist
+        badJournal.recordTest('/src/foo.test.ts');
+        // After append failure, hasTestFor should return true (fail-open)
+        expect(badJournal.hasTestFor(['/src/bar.test.ts'])).toBe(true);
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
   });
 
   describe('hasTestRun()', () => {
@@ -131,6 +145,17 @@ describe('Journal', () => {
       const j = new Journal('/nonexistent/path/journal.log');
       expect(() => j.hasTestRun()).not.toThrow();
       expect(j.hasTestRun()).toBe(false);
+    });
+
+    it('returns true when append has previously failed (appendFailed flag)', () => {
+      const badJournal = new Journal('/nonexistent/dir/journal.log');
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        badJournal.recordTestRun('npm test');
+        expect(badJournal.hasTestRun()).toBe(true);
+      } finally {
+        stderrSpy.mockRestore();
+      }
     });
   });
 
@@ -170,6 +195,57 @@ describe('Journal', () => {
       const entries = journal.getEntries();
       expect(entries).toHaveLength(2);
       expect(entries.every((e: { type: string; filePath: string }) => e.type === 'TEST')).toBe(true);
+    });
+  });
+
+  describe('append() — stderr logging on failure (Finding #4)', () => {
+    it('logs to stderr when append fails', () => {
+      const badJournal = new Journal('/nonexistent/dir/journal.log');
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        badJournal.recordTest('/src/foo.test.ts');
+        expect(stderrSpy).toHaveBeenCalled();
+        const msg = stderrSpy.mock.calls[0]?.[0] as string;
+        expect(msg).toContain('[tdd-gate]');
+        expect(msg).toContain('journal write failed');
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('getEntries() — stderr logging on non-ENOENT failure (Finding #5)', () => {
+    it('logs to stderr on non-ENOENT read failure', () => {
+      // Write a file then make it unreadable to force a non-ENOENT error
+      // Instead, we mock fs.readFileSync to throw a non-ENOENT error
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
+        const err = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+        err.code = 'EACCES';
+        throw err;
+      });
+      try {
+        const entries = journal.getEntries();
+        expect(entries).toEqual([]);
+        expect(stderrSpy).toHaveBeenCalled();
+        const msg = stderrSpy.mock.calls[0]?.[0] as string;
+        expect(msg).toContain('[tdd-gate]');
+        expect(msg).toContain('journal read failed');
+      } finally {
+        readSpy.mockRestore();
+        stderrSpy.mockRestore();
+      }
+    });
+
+    it('does NOT log to stderr on ENOENT (missing file is expected)', () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        const j = new Journal('/nonexistent/path/journal.log');
+        j.getEntries();
+        expect(stderrSpy).not.toHaveBeenCalled();
+      } finally {
+        stderrSpy.mockRestore();
+      }
     });
   });
 

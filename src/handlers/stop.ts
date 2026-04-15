@@ -37,8 +37,12 @@ export function handleStop(
       output.split('\n').map((f) => f.trim()).filter((f) => f.length > 0);
 
     changedFiles = new Set([...parseLines(headOutput), ...parseLines(cachedOutput)]);
-  } catch {
-    // Not a git repo or git unavailable — fail-open
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      process.stderr.write(
+        `[tdd-gate] git diff failed (completion audit skipped): ${err instanceof Error ? err.message : String(err)}\n`
+      );
+    }
     return { action: 'allow' };
   }
 

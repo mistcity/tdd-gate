@@ -160,20 +160,53 @@ describe('handleStop — no git changes', () => {
 });
 
 describe('handleStop — git command fails', () => {
-  it('returns allow (fail-open) when git throws', () => {
+  it('returns allow (fail-open) and logs to stderr when git throws (Finding #10)', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     mockExecSync.mockImplementation((_file: unknown, _args: unknown) => {
       throw new Error('not a git repository');
     });
 
-    const result = handleStop(
-      'sess1',
-      '/project',
-      testConfig,
-      createStubJournal(),
-      createStubCircuitBreaker(),
-    );
+    try {
+      const result = handleStop(
+        'sess1',
+        '/project',
+        testConfig,
+        createStubJournal(),
+        createStubCircuitBreaker(),
+      );
 
-    expect(result.action).toBe('allow');
+      expect(result.action).toBe('allow');
+      expect(stderrSpy).toHaveBeenCalled();
+      const msg = stderrSpy.mock.calls[0]?.[0] as string;
+      expect(msg).toContain('[tdd-gate]');
+      expect(msg).toContain('git diff failed');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('returns allow without logging when git throws ENOENT', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    mockExecSync.mockImplementation((_file: unknown, _args: unknown) => {
+      const err = new Error('ENOENT') as NodeJS.ErrnoException;
+      err.code = 'ENOENT';
+      throw err;
+    });
+
+    try {
+      const result = handleStop(
+        'sess1',
+        '/project',
+        testConfig,
+        createStubJournal(),
+        createStubCircuitBreaker(),
+      );
+
+      expect(result.action).toBe('allow');
+      expect(stderrSpy).not.toHaveBeenCalled();
+    } finally {
+      stderrSpy.mockRestore();
+    }
   });
 
   it('suppresses git stderr output via stdio option', () => {
