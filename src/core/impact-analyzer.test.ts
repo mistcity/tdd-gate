@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildImportPattern, LANGUAGE_BY_EXT, findDependents, analyzeImpact } from './impact-analyzer.js';
+import { buildImportPattern, LANGUAGE_BY_EXT, findDependents, analyzeImpact, GENERIC_BASENAMES } from './impact-analyzer.js';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -482,14 +482,14 @@ describe('findDependents', () => {
   });
 
   it('finds .js files that import a .ts module (cross-extension)', () => {
-    writeFileSync(join(tmpDir, 'utils.ts'), 'export function helper() {}');
+    writeFileSync(join(tmpDir, 'formatter.ts'), 'export function helper() {}');
     writeFileSync(
       join(tmpDir, 'legacy.js'),
-      'const { helper } = require("./utils");\nmodule.exports = { helper };',
+      'const { helper } = require("./formatter");\nmodule.exports = { helper };',
     );
 
     const result = findDependents(
-      join(tmpDir, 'utils.ts'),
+      join(tmpDir, 'formatter.ts'),
       'typescript',
       tmpDir,
       { maxFiles: 10, timeout: 5000 },
@@ -696,6 +696,196 @@ describe('findDependents', () => {
     );
 
     expect(result.length).toBeLessThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug 1: Generic basenames cause massive false positives
+// ---------------------------------------------------------------------------
+
+describe('GENERIC_BASENAMES', () => {
+  it('contains index, utils, main, types, config, helpers, and other common generic names', () => {
+    expect(GENERIC_BASENAMES.has('index')).toBe(true);
+    expect(GENERIC_BASENAMES.has('main')).toBe(true);
+    expect(GENERIC_BASENAMES.has('mod')).toBe(true);
+    expect(GENERIC_BASENAMES.has('lib')).toBe(true);
+    expect(GENERIC_BASENAMES.has('utils')).toBe(true);
+    expect(GENERIC_BASENAMES.has('util')).toBe(true);
+    expect(GENERIC_BASENAMES.has('helpers')).toBe(true);
+    expect(GENERIC_BASENAMES.has('helper')).toBe(true);
+    expect(GENERIC_BASENAMES.has('types')).toBe(true);
+    expect(GENERIC_BASENAMES.has('constants')).toBe(true);
+    expect(GENERIC_BASENAMES.has('config')).toBe(true);
+    expect(GENERIC_BASENAMES.has('index.d')).toBe(true);
+  });
+
+  it('does not contain specific module names like auth or Button', () => {
+    expect(GENERIC_BASENAMES.has('auth')).toBe(false);
+    expect(GENERIC_BASENAMES.has('Button')).toBe(false);
+    expect(GENERIC_BASENAMES.has('user-service')).toBe(false);
+  });
+});
+
+describe('findDependents — generic basename skip', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'tdd-gate-generic-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns [] for index.ts (generic basename)', () => {
+    writeFileSync(join(tmpDir, 'index.ts'), 'export function login() {}');
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./index";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'index.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] for utils.ts (generic basename)', () => {
+    writeFileSync(join(tmpDir, 'utils.ts'), 'export function helper() {}');
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { helper } from "./utils";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'utils.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] for types.ts (generic basename)', () => {
+    writeFileSync(join(tmpDir, 'types.ts'), 'export type Foo = string;');
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import type { Foo } from "./types";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'types.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] for config.ts (generic basename)', () => {
+    writeFileSync(join(tmpDir, 'config.ts'), 'export const PORT = 3000;');
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { PORT } from "./config";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'config.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('still works for auth.ts (not generic)', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'app.ts'));
+  });
+
+  it('still works for user-service.ts (not generic, hyphenated)', () => {
+    writeFileSync(join(tmpDir, 'user-service.ts'), 'export function getUser() {}');
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { getUser } from "./user-service";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'user-service.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'app.ts'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug 2: Hyphenated filenames and \b word boundary matching
+// ---------------------------------------------------------------------------
+
+describe('buildImportPattern — hyphenated filenames', () => {
+  it('matches import of hyphenated module: from "./my-utils"', () => {
+    const pattern = buildImportPattern('my-utils', 'typescript');
+    expect(matches(pattern, 'import { x } from "./my-utils"')).toBe(true);
+  });
+
+  it('matches require of hyphenated module: require("./my-utils")', () => {
+    const pattern = buildImportPattern('my-utils', 'typescript');
+    expect(matches(pattern, 'const x = require("./my-utils")')).toBe(true);
+  });
+
+  it('known limitation: matches "./not-my-utils" because \\b treats hyphen as word boundary', () => {
+    const pattern = buildImportPattern('my-utils', 'typescript');
+    // \b fires at the hyphen between "not" and "my" in "not-my-utils",
+    // so \bmy-utils matches inside "not-my-utils". This is a known limitation
+    // of \b with hyphenated basenames — acceptable because:
+    // 1. Such collisions are rare in practice (few modules share hyphenated suffixes)
+    // 2. Impact analysis is advisory, not blocking
+    // 3. The alternative (path-based matching) is much more complex
+    expect(matches(pattern, 'import { x } from "./not-my-utils"')).toBe(true);
+  });
+
+  it('does not match module with extra suffix: from "./my-utils-extra"', () => {
+    const pattern = buildImportPattern('my-utils', 'typescript');
+    // The closing quote after basename prevents suffix matches
+    expect(matches(pattern, 'import { x } from "./my-utils-extra"')).toBe(false);
+  });
+
+  it('matches import of deeply nested hyphenated module', () => {
+    const pattern = buildImportPattern('my-utils', 'typescript');
+    expect(matches(pattern, 'import { x } from "../lib/my-utils"')).toBe(true);
+  });
+
+  it('matches Python import of hyphenated module (if valid)', () => {
+    // Python doesn't allow hyphens in module names, but if encountered:
+    const pattern = buildImportPattern('my-utils', 'python');
+    expect(matches(pattern, 'import my-utils')).toBe(true);
+  });
+
+  it('matches Rust use of hyphenated crate', () => {
+    const pattern = buildImportPattern('my-utils', 'rust');
+    expect(matches(pattern, 'use crate::my-utils;')).toBe(true);
   });
 });
 

@@ -101,6 +101,22 @@ export function buildImportPattern(basename: string, language: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// GENERIC_BASENAMES — files whose basename produces too many false positives
+// ---------------------------------------------------------------------------
+
+/**
+ * Basenames that are so common (barrel exports, utility files) that grepping
+ * for `from.*\bindex\b` matches nearly every file in a project. Impact
+ * analysis on these produces noise, not signal — skip entirely.
+ */
+export const GENERIC_BASENAMES = new Set([
+  'index', 'main', 'mod', 'lib',
+  'utils', 'util', 'helpers', 'helper',
+  'types', 'constants', 'config',
+  'index.d', // TypeScript declaration barrel
+]);
+
+// ---------------------------------------------------------------------------
 // findDependents
 // ---------------------------------------------------------------------------
 
@@ -133,6 +149,10 @@ export function findDependents(
 ): string[] {
   const ext = path.extname(filePath);
   const basename = path.basename(filePath, ext);
+
+  // Skip files with overly generic basenames — they produce massive false positives
+  if (GENERIC_BASENAMES.has(basename)) return [];
+
   const pattern = buildImportPattern(basename, language);
 
   // JS/TS files share a search family; other languages search their own extension
