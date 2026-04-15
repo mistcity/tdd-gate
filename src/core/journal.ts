@@ -124,7 +124,7 @@ export class Journal {
       .filter(e => e.type === 'VIOLATION')
       .map(e => {
         const parts = e.filePath.split('|');
-        return { implFile: parts[0], expectedTests: parts.slice(1) };
+        return { implFile: parts[0] ?? '', expectedTests: parts.slice(1) };
       });
   }
 
@@ -132,11 +132,24 @@ export class Journal {
   getImpactViolations(): Array<{ changedFile: string; dependent: string; missingTest: string }> {
     const entries = this.getEntries();
     return entries
-      .filter(e => e.type === 'IMPACT_VIOLATION')
+      .filter(e => {
+        if (e.type !== 'IMPACT_VIOLATION') return false;
+        const parts = e.filePath.split('|');
+        return parts.length >= 3;
+      })
       .map(e => {
         const parts = e.filePath.split('|');
-        return { changedFile: parts[0], dependent: parts[1], missingTest: parts[2] };
+        return {
+          changedFile: parts[0] ?? '',
+          dependent: parts[1] ?? '',
+          missingTest: parts[2] ?? '',
+        };
       });
+  }
+
+  /** Check if any journal append operation has failed. */
+  hasAppendFailed(): boolean {
+    return this.appendFailed;
   }
 
   private append(type: string, filePath: string): void {

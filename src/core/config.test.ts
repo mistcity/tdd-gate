@@ -426,4 +426,66 @@ describe('loadConfig', () => {
 
     expect(result.mode).toBe('enforce');
   });
+
+  it('logs to stderr when mode value is rejected (invalid string)', () => {
+    const userConfig = { mode: 'warning' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const result = loadConfig(tmpDir);
+      expect(result.mode).toBe('enforce');
+      expect(stderrSpy).toHaveBeenCalled();
+      const msg = stderrSpy.mock.calls[0]?.[0] as string;
+      expect(msg).toContain('[tdd-gate]');
+      expect(msg).toContain('invalid mode');
+      expect(msg).toContain('warning');
+      expect(msg).toContain('enforce');
+      expect(msg).toContain('observe');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('logs to stderr when mode value is OBSERVE (case-sensitive)', () => {
+    const userConfig = { mode: 'OBSERVE' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const result = loadConfig(tmpDir);
+      expect(result.mode).toBe('enforce');
+      expect(stderrSpy).toHaveBeenCalled();
+      const msg = stderrSpy.mock.calls[0]?.[0] as string;
+      expect(msg).toContain('OBSERVE');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('does NOT log to stderr when mode is valid "enforce"', () => {
+    const userConfig = { mode: 'enforce' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      loadConfig(tmpDir);
+      expect(stderrSpy).not.toHaveBeenCalled();
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('does NOT log to stderr when mode is valid "observe"', () => {
+    const userConfig = { mode: 'observe' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      loadConfig(tmpDir);
+      expect(stderrSpy).not.toHaveBeenCalled();
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
 });

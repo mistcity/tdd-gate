@@ -22,7 +22,12 @@ export function handleStop(
   if (!config.completionAudit) return { action: 'allow' };
 
   // 2. Circuit breaker check
-  if (circuitBreaker.check()) return { action: 'allow' };
+  if (circuitBreaker.check()) {
+    if (config.mode === 'observe') {
+      process.stderr.write('[tdd-gate] circuit breaker tripped — observe audit may be incomplete\n');
+    }
+    return { action: 'allow' };
+  }
 
   // 3. Get changed files from git — fail-open on any error
   let changedFiles: Set<string>;
@@ -85,47 +90,58 @@ export function handleStop(
   // If neither direct nor impact violations, allow
   if (!hasDirectViolation && !hasImpactViolation) return { action: 'allow' };
 
-  // Observe mode: record violations and build summary, but allow
+  // Observe mode: record violations and build summary from in-memory data, but allow
   if (config.mode === 'observe') {
+    // Build in-memory violation lists for the summary
+    const directViolations: Array<{ implFile: string; expectedTests: string[] }> = [];
+    const impactViolationList: Array<{ changedFile: string; dependent: string; missingTest: string }> = [];
+
     if (hasDirectViolation) {
       for (const f of implFiles) {
         const expected = getExpectedTestPaths(f, config);
-        journal.recordViolation(path.join(cwd, f), expected);
+        const absPath = path.join(cwd, f);
+        journal.recordViolation(absPath, expected);
+        directViolations.push({ implFile: absPath, expectedTests: expected });
       }
     }
     if (hasImpactViolation) {
       for (const r of impactResults) {
         for (let i = 0; i < r.dependents.length; i++) {
-          journal.recordImpactViolation(r.filePath, r.dependents[i], r.missingTests[i] ?? '');
+          const dep = r.dependents[i];
+          const test = r.missingTests[i] ?? '';
+          journal.recordImpactViolation(r.filePath, dep, test);
+          impactViolationList.push({ changedFile: r.filePath, dependent: dep, missingTest: test });
         }
       }
     }
 
-    const violations = journal.getViolations();
-    const ivs = journal.getImpactViolations();
-
-    if (violations.length === 0 && ivs.length === 0) {
+    if (directViolations.length === 0 && impactViolationList.length === 0) {
       return { action: 'allow' };
     }
 
     const lines: string[] = [];
-    lines.push(`[tdd-gate audit] This message: ${violations.length} TDD violation(s), ${ivs.length} impact violation(s)`);
+    lines.push(`[tdd-gate audit] This message: ${directViolations.length} TDD violation(s), ${impactViolationList.length} impact violation(s)`);
     lines.push('');
 
-    if (violations.length > 0) {
+    if (directViolations.length > 0) {
       lines.push('  Direct violations (impl written without test):');
-      for (const v of violations) {
+      for (const v of directViolations) {
         const testName = v.expectedTests[0] ? path.basename(v.expectedTests[0]) : 'unknown';
         lines.push(`    - ${path.basename(v.implFile)} (expected: ${testName})`);
       }
     }
 
-    if (ivs.length > 0) {
+    if (impactViolationList.length > 0) {
       lines.push('');
       lines.push('  Impact violations (dependent tests not run):');
-      for (const v of ivs) {
+      for (const v of impactViolationList) {
         lines.push(`    - ${path.basename(v.dependent)} depends on modified ${path.basename(v.changedFile)} (run: ${v.missingTest})`);
       }
+    }
+
+    if (journal.hasAppendFailed()) {
+      lines.push('');
+      lines.push('  \u26a0 Journal write errors occurred \u2014 some violations may not be recorded');
     }
 
     return { action: 'allow', summary: lines.join('\n') };

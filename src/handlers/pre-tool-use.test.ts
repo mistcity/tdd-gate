@@ -2,7 +2,7 @@
  * Tests for the PreToolUse handler — core TDD enforcement logic.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { handlePreToolUse } from './pre-tool-use.js';
 import type { PreToolUseInput, TddGateConfig } from '../types.js';
 import type { Journal } from '../core/journal.js';
@@ -529,5 +529,46 @@ describe('PreToolUse handler — Observe mode', () => {
 
     expect(result.action).toBe('deny');
     expect(journal.violations).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// Circuit breaker diagnostic in observe mode
+// ===========================================================================
+
+describe('PreToolUse handler — Circuit breaker diagnostic in observe mode', () => {
+  it('logs diagnostic to stderr when circuit breaker trips in observe mode', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const journal = createStubJournal();
+      const cb = createStubCircuitBreaker(true);
+      const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
+
+      const result = callHandler(input, observeConfig, journal, cb);
+
+      expect(result.action).toBe('allow');
+      expect(stderrSpy).toHaveBeenCalled();
+      const msgs = stderrSpy.mock.calls.map(c => c[0] as string);
+      expect(msgs.some(m => m.includes('circuit breaker tripped') && m.includes('observe audit may be incomplete'))).toBe(true);
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('does NOT log diagnostic when circuit breaker trips in enforce mode', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const journal = createStubJournal();
+      const cb = createStubCircuitBreaker(true);
+      const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
+
+      const result = callHandler(input, testConfig, journal, cb);
+
+      expect(result.action).toBe('allow');
+      const msgs = stderrSpy.mock.calls.map(c => c[0] as string);
+      expect(msgs.some(m => m.includes('circuit breaker tripped') && m.includes('observe audit'))).toBe(false);
+    } finally {
+      stderrSpy.mockRestore();
+    }
   });
 });

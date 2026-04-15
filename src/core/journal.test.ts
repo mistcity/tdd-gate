@@ -377,5 +377,55 @@ describe('Journal', () => {
       expect(violations).toHaveLength(1);
       expect(violations[0].changedFile).toBe('/src/auth.ts');
     });
+
+    it('skips malformed entries with fewer than 3 pipe-separated parts', () => {
+      // Manually write a malformed IMPACT_VIOLATION entry (only 1 part, no pipes)
+      fs.appendFileSync(journalPath, `${Date.now()} IMPACT_VIOLATION /src/auth.ts\n`);
+      // Also write a valid one
+      journal.recordImpactViolation('/src/db.ts', '/src/service.ts', 'service.test.ts');
+
+      const violations = journal.getImpactViolations();
+      // Only the valid one should be returned
+      expect(violations).toHaveLength(1);
+      expect(violations[0].changedFile).toBe('/src/db.ts');
+    });
+
+    it('skips malformed entries with only 2 pipe-separated parts', () => {
+      // Write an entry with only 2 parts (missing missingTest)
+      fs.appendFileSync(journalPath, `${Date.now()} IMPACT_VIOLATION /src/auth.ts|/src/api.ts\n`);
+
+      const violations = journal.getImpactViolations();
+      expect(violations).toHaveLength(0);
+    });
+
+    it('uses empty string fallback for undefined parts via null-coalescing', () => {
+      // Valid entry should have proper defaults
+      journal.recordImpactViolation('/src/auth.ts', '/src/api.ts', 'api.test.ts');
+      const violations = journal.getImpactViolations();
+      expect(violations[0].changedFile).toBe('/src/auth.ts');
+      expect(violations[0].dependent).toBe('/src/api.ts');
+      expect(violations[0].missingTest).toBe('api.test.ts');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // hasAppendFailed()
+  // -------------------------------------------------------------------------
+
+  describe('hasAppendFailed()', () => {
+    it('returns false when no append has failed', () => {
+      expect(journal.hasAppendFailed()).toBe(false);
+    });
+
+    it('returns true after an append failure', () => {
+      const badJournal = new Journal('/nonexistent/dir/journal.log');
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      try {
+        badJournal.recordTest('/src/foo.test.ts');
+        expect(badJournal.hasAppendFailed()).toBe(true);
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
   });
 });

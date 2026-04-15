@@ -123,6 +123,9 @@ export function handlePreToolUse(
 ): PreToolUseResult {
   // 1. Circuit breaker — if tripped, auto-allow everything
   if (circuitBreaker.check()) {
+    if (config.mode === 'observe') {
+      process.stderr.write('[tdd-gate] circuit breaker tripped — observe audit may be incomplete\n');
+    }
     return ALLOW;
   }
 

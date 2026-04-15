@@ -132,6 +132,12 @@ export function loadConfig(cwd: string): TddGateConfig {
       ? rawMode
       : DEFAULT_CONFIG.mode;
 
+    if (rawMode !== 'enforce' && rawMode !== 'observe') {
+      process.stderr.write(
+        `[tdd-gate] invalid mode "${String(rawMode)}" in config, falling back to "enforce". Valid values: "enforce", "observe"\n`
+      );
+    }
+
     return {
       languages,
       exempt,

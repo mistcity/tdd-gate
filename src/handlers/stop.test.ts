@@ -69,7 +69,7 @@ const observeConfig: TddGateConfig = {
 // Stub factories
 // ---------------------------------------------------------------------------
 
-function createStubJournal(hasRun = false) {
+function createStubJournal(hasRun = false, appendFailed = false) {
   const violations: Array<{ implFile: string; expectedTests: string[] }> = [];
   const impactViolations: Array<{ changedFile: string; dependent: string; missingTest: string }> = [];
   return {
@@ -83,6 +83,7 @@ function createStubJournal(hasRun = false) {
     recordImpactViolation(changedFile: string, dependent: string, missingTest: string) { impactViolations.push({ changedFile, dependent, missingTest }); },
     getViolations() { return violations; },
     getImpactViolations() { return impactViolations; },
+    hasAppendFailed() { return appendFailed; },
     _violations: violations,
     _impactViolations: impactViolations,
   } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -716,6 +717,44 @@ describe('handleStop — observe mode', () => {
     expect(journal._impactViolations.length).toBeGreaterThan(0);
   });
 
+  it('builds summary from in-memory data without reading journal back', () => {
+    mockDiff(['src/auth.ts']);
+
+    const impactResults: ImpactResult[] = [
+      {
+        filePath: '/project/src/auth.ts',
+        dependents: ['/project/src/api.ts'],
+        missingTests: ['api.test.ts'],
+      },
+    ];
+    mockAnalyzeImpact.mockReturnValue(impactResults);
+
+    // Create a journal where getViolations/getImpactViolations return empty
+    // but recordViolation/recordImpactViolation work. If the handler uses
+    // in-memory data, the summary will still be populated.
+    const journal = createStubJournal(false);
+    // Override getViolations/getImpactViolations to return empty arrays
+    // to prove the handler builds from in-memory data
+    journal.getViolations = () => [];
+    journal.getImpactViolations = () => [];
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      journal,
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    expect(result).toHaveProperty('summary');
+    if ('summary' in result && result.summary) {
+      // Even though getViolations() returns [], the summary should be built
+      // from in-memory data (implFiles, impactResults)
+      expect(result.summary).toContain('auth.ts');
+    }
+  });
+
   it('still blocks in enforce mode (unchanged behavior)', () => {
     mockDiff(['src/auth.ts']);
     mockAnalyzeImpact.mockReturnValue([]);
@@ -755,6 +794,91 @@ describe('handleStop — observe mode', () => {
     if ('summary' in result && result.summary) {
       expect(result.summary).toContain('TDD violation');
       expect(result.summary).toContain('impact violation');
+    }
+  });
+
+  it('appends journal write warning to summary when appendFailed is true', () => {
+    mockDiff(['src/auth.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const journal = createStubJournal(false, true); // appendFailed = true
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      journal,
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    if ('summary' in result && result.summary) {
+      expect(result.summary).toContain('Journal write errors occurred');
+    }
+  });
+
+  it('does not append journal write warning when appendFailed is false', () => {
+    mockDiff(['src/auth.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const journal = createStubJournal(false, false); // appendFailed = false
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      journal,
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    if ('summary' in result && result.summary) {
+      expect(result.summary).not.toContain('Journal write errors occurred');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Circuit breaker diagnostic in observe mode
+// ---------------------------------------------------------------------------
+
+describe('handleStop — circuit breaker diagnostic in observe mode', () => {
+  it('logs diagnostic to stderr when circuit breaker trips in observe mode', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const result = handleStop(
+        'sess1',
+        '/project',
+        observeConfig,
+        createStubJournal(false),
+        createStubCircuitBreaker(true),
+      );
+
+      expect(result.action).toBe('allow');
+      expect(stderrSpy).toHaveBeenCalled();
+      const msgs = stderrSpy.mock.calls.map(c => c[0] as string);
+      expect(msgs.some(m => m.includes('circuit breaker tripped') && m.includes('observe audit may be incomplete'))).toBe(true);
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('does NOT log diagnostic when circuit breaker trips in enforce mode', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const result = handleStop(
+        'sess1',
+        '/project',
+        testConfig,
+        createStubJournal(false),
+        createStubCircuitBreaker(true),
+      );
+
+      expect(result.action).toBe('allow');
+      const msgs = stderrSpy.mock.calls.map(c => c[0] as string);
+      expect(msgs.some(m => m.includes('circuit breaker tripped') && m.includes('observe audit'))).toBe(false);
+    } finally {
+      stderrSpy.mockRestore();
     }
   });
 });
