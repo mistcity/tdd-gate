@@ -396,6 +396,40 @@ describe('findDependents', () => {
     expect(result).not.toContain(join(tmpDir, 'auth.test.ts'));
   });
 
+  it('finds .tsx files that import a .ts module (cross-extension)', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    writeFileSync(
+      join(tmpDir, 'App.tsx'),
+      'import { login } from "./auth";\nexport function App() { login(); }',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'App.tsx'));
+  });
+
+  it('finds .js files that import a .ts module (cross-extension)', () => {
+    writeFileSync(join(tmpDir, 'utils.ts'), 'export function helper() {}');
+    writeFileSync(
+      join(tmpDir, 'legacy.js'),
+      'const { helper } = require("./utils");\nmodule.exports = { helper };',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'utils.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'legacy.js'));
+  });
+
   it('returns empty array when no dependents found', () => {
     writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
     writeFileSync(join(tmpDir, 'other.ts'), 'console.log("no imports here");');
@@ -598,6 +632,32 @@ describe('analyzeImpact', () => {
     } else {
       expect(result).toEqual([]);
     }
+  });
+
+  it('missingTests has 1:1 correspondence with dependents (not multiple per dependent)', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";\nexport function main() { login(); }',
+    );
+    writeFileSync(
+      join(tmpDir, 'server.ts'),
+      'import { login } from "./auth";\nexport function serve() { login(); }',
+    );
+
+    const config = makeConfig();
+    const journal = { hasTestFor: () => false, hasTestRun: () => false } as any;
+
+    const result = analyzeImpact(
+      [join(tmpDir, 'auth.ts')],
+      tmpDir,
+      config,
+      journal,
+    );
+
+    expect(result.length).toBe(1);
+    // missingTests.length MUST equal dependents.length (1:1 mapping)
+    expect(result[0].missingTests.length).toBe(result[0].dependents.length);
   });
 
   it('handles multiple changed files', () => {

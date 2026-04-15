@@ -112,10 +112,21 @@ export function findDependents(
   const ext = path.extname(filePath);
   const pattern = buildImportPattern(basename, language);
 
+  // Build --include args for all extensions in the same language family
+  // e.g., .ts file should also search .tsx, .js, .jsx files
+  const RELATED_EXTENSIONS: Record<string, string[]> = {
+    '.ts': ['.ts', '.tsx', '.js', '.jsx'],
+    '.tsx': ['.ts', '.tsx', '.js', '.jsx'],
+    '.js': ['.ts', '.tsx', '.js', '.jsx'],
+    '.jsx': ['.ts', '.tsx', '.js', '.jsx'],
+  };
+  const searchExts = RELATED_EXTENSIONS[ext] ?? [ext];
+  const includeArgs = searchExts.flatMap((e) => ['--include', `*${e}`]);
+
   try {
     const stdout = execFileSync(
       'grep',
-      ['-rl', '--include', `*${ext}`, '-E', pattern, projectRoot],
+      ['-rl', ...includeArgs, '-E', pattern, projectRoot],
       {
         timeout: options.timeout,
         encoding: 'utf-8',
@@ -206,7 +217,8 @@ export function analyzeImpact(
       // Check if tests for this dependent have been written
       if (!journal.hasTestFor(classification.expectedTests)) {
         uncoveredDependents.push(dep);
-        missingTests.push(...classification.expectedTests);
+        // Push only the first expected test name (1:1 with dependents for message formatting)
+        missingTests.push(classification.expectedTests[0] ?? path.basename(dep));
       }
     }
 
