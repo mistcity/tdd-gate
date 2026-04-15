@@ -3,13 +3,19 @@
  * Following TDD: tests written before implementation.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   LANGUAGES,
   classifyFile,
   getExpectedTestPaths,
+  findProjectRoot,
 } from './file-classifier.js';
 import type { TddGateConfig, LanguageDefinition } from '../types.js';
+
+// We mock node:fs to control existsSync in findProjectRoot tests
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn(() => false),
+}));
 
 // ---------------------------------------------------------------------------
 // Mock config
@@ -665,5 +671,158 @@ describe('getExpectedTestPaths', () => {
   it('includes __tests__ subdirectory paths for JSX', () => {
     const paths = getExpectedTestPaths('/project/src/Button.jsx', mockConfig);
     expect(paths).toContain('/project/src/__tests__/Button.test.jsx');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findProjectRoot
+// ---------------------------------------------------------------------------
+
+describe('findProjectRoot', () => {
+  let existsSyncMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const fs = await import('node:fs');
+    existsSyncMock = fs.existsSync as ReturnType<typeof vi.fn>;
+    existsSyncMock.mockReset();
+    existsSyncMock.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    existsSyncMock.mockReset();
+  });
+
+  it('finds project root by .git directory', () => {
+    existsSyncMock.mockImplementation((p: string) => {
+      return p === '/project/.git';
+    });
+    const root = findProjectRoot('/project/src/core');
+    expect(root).toBe('/project');
+  });
+
+  it('finds project root by package.json', () => {
+    existsSyncMock.mockImplementation((p: string) => {
+      return p === '/project/package.json';
+    });
+    const root = findProjectRoot('/project/src/core');
+    expect(root).toBe('/project');
+  });
+
+  it('finds project root by tdd-gate.config.json', () => {
+    existsSyncMock.mockImplementation((p: string) => {
+      return p === '/project/tdd-gate.config.json';
+    });
+    const root = findProjectRoot('/project/src/core');
+    expect(root).toBe('/project');
+  });
+
+  it('returns null when no root marker found within 10 levels', () => {
+    existsSyncMock.mockReturnValue(false);
+    const root = findProjectRoot('/a/b/c/d/e/f/g/h/i/j/k');
+    expect(root).toBeNull();
+  });
+
+  it('stops at filesystem root', () => {
+    existsSyncMock.mockReturnValue(false);
+    const root = findProjectRoot('/project');
+    expect(root).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getExpectedTestPaths — multi-directory support
+// ---------------------------------------------------------------------------
+
+describe('getExpectedTestPaths — multi-directory test paths', () => {
+  let existsSyncMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const fs = await import('node:fs');
+    existsSyncMock = fs.existsSync as ReturnType<typeof vi.fn>;
+    existsSyncMock.mockReset();
+    // Default: project root found via .git at /project
+    existsSyncMock.mockImplementation((p: string) => {
+      return p === '/project/.git';
+    });
+  });
+
+  afterEach(() => {
+    existsSyncMock.mockReset();
+  });
+
+  it('TypeScript file gets test paths in tests/, test/, spec/ directories', () => {
+    const paths = getExpectedTestPaths('/project/src/auth.ts', mockConfig);
+    expect(paths).toContain('/project/tests/auth.test.ts');
+    expect(paths).toContain('/project/tests/auth.spec.ts');
+    expect(paths).toContain('/project/test/auth.test.ts');
+    expect(paths).toContain('/project/test/auth.spec.ts');
+    expect(paths).toContain('/project/spec/auth.test.ts');
+    expect(paths).toContain('/project/spec/auth.spec.ts');
+  });
+
+  it('Python file gets test paths in test directories', () => {
+    const paths = getExpectedTestPaths('/project/src/auth.py', mockConfig);
+    expect(paths).toContain('/project/tests/test_auth.py');
+    expect(paths).toContain('/project/tests/auth_test.py');
+    expect(paths).toContain('/project/test/test_auth.py');
+    expect(paths).toContain('/project/test/auth_test.py');
+    expect(paths).toContain('/project/spec/test_auth.py');
+    expect(paths).toContain('/project/spec/auth_test.py');
+  });
+
+  it('Go file gets test paths in test directories', () => {
+    const paths = getExpectedTestPaths('/project/pkg/handler.go', mockConfig);
+    expect(paths).toContain('/project/tests/handler_test.go');
+    expect(paths).toContain('/project/test/handler_test.go');
+    expect(paths).toContain('/project/spec/handler_test.go');
+  });
+
+  it('Kotlin file gets test paths in test directories', () => {
+    const paths = getExpectedTestPaths('/project/src/Auth.kt', mockConfig);
+    expect(paths).toContain('/project/tests/AuthTest.kt');
+    expect(paths).toContain('/project/tests/AuthTests.kt');
+    expect(paths).toContain('/project/test/AuthTest.kt');
+    expect(paths).toContain('/project/test/AuthTests.kt');
+  });
+
+  it('same-directory paths are still included', () => {
+    const paths = getExpectedTestPaths('/project/src/auth.ts', mockConfig);
+    // Same-dir paths must still be present
+    expect(paths).toContain('/project/src/auth.test.ts');
+    expect(paths).toContain('/project/src/auth.spec.ts');
+    // __tests__ subdirectory paths must still be present
+    expect(paths).toContain('/project/src/__tests__/auth.test.ts');
+    expect(paths).toContain('/project/src/__tests__/auth.spec.ts');
+  });
+
+  it('results are deduplicated', () => {
+    // __tests__ is in config.testDirs AND handled by the __tests__ subdirectory logic
+    // So paths in __tests__ should not appear twice
+    const paths = getExpectedTestPaths('/project/src/auth.ts', mockConfig);
+    const uniquePaths = [...new Set(paths)];
+    expect(paths).toHaveLength(uniquePaths.length);
+  });
+
+  it('does not add test dir paths when project root is not found', () => {
+    existsSyncMock.mockReturnValue(false);
+    const paths = getExpectedTestPaths('/project/src/auth.ts', mockConfig);
+    // Should still have same-dir and __tests__ subdirectory paths
+    expect(paths).toContain('/project/src/auth.test.ts');
+    expect(paths).toContain('/project/src/__tests__/auth.test.ts');
+    // Should NOT have project-root-relative test dir paths
+    expect(paths).not.toContain('/project/tests/auth.test.ts');
+  });
+
+  it('handles empty testDirs gracefully', () => {
+    const configNoTestDirs: TddGateConfig = {
+      ...mockConfig,
+      testDirs: [],
+    };
+    const paths = getExpectedTestPaths('/project/src/auth.ts', configNoTestDirs);
+    // Same-dir and __tests__ subdirectory should still work
+    expect(paths).toContain('/project/src/auth.test.ts');
+    expect(paths).toContain('/project/src/__tests__/auth.test.ts');
+    // No test dir paths
+    expect(paths).not.toContain('/project/tests/auth.test.ts');
   });
 });

@@ -6,6 +6,7 @@
  */
 
 import path from 'path';
+import { existsSync } from 'node:fs';
 import type { LanguageDefinition, TddGateConfig } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -183,6 +184,40 @@ export function classifyFile(filePath: string, config: TddGateConfig): FileClass
 }
 
 // ---------------------------------------------------------------------------
+// findProjectRoot
+// ---------------------------------------------------------------------------
+
+/** Root marker files used to detect project root directory. */
+const ROOT_MARKERS = ['.git', 'tdd-gate.config.json', 'package.json'];
+
+/** Maximum number of parent directories to walk when searching for root. */
+const MAX_ROOT_SEARCH_DEPTH = 10;
+
+/**
+ * Walk up from `startDir` looking for a project root marker (.git,
+ * tdd-gate.config.json, or package.json). Returns the root directory path
+ * or null if not found within MAX_ROOT_SEARCH_DEPTH levels.
+ */
+export function findProjectRoot(startDir: string): string | null {
+  let current = startDir;
+
+  for (let i = 0; i < MAX_ROOT_SEARCH_DEPTH; i++) {
+    for (const marker of ROOT_MARKERS) {
+      if (existsSync(path.join(current, marker))) {
+        return current;
+      }
+    }
+
+    const parent = path.dirname(current);
+    // Reached filesystem root — stop
+    if (parent === current) return null;
+    current = parent;
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // getExpectedTestPaths
 // ---------------------------------------------------------------------------
 
@@ -200,14 +235,29 @@ export function getExpectedTestPaths(implPath: string, config: TddGateConfig): s
   if (!lang) return [];
 
   const patterns = lang.testPatterns(basename);
+  const result = new Set<string>();
 
   // Same-directory paths
-  const sameDirPaths = patterns.map((p) => path.join(dir, p));
+  for (const p of patterns) {
+    result.add(path.join(dir, p));
+  }
 
   // __tests__ subdirectory for JS/TS family
-  const testsSubDirPaths: string[] = JS_TS_LANGUAGES.has(lang.name)
-    ? patterns.map((p) => path.join(dir, '__tests__', p))
-    : [];
+  if (JS_TS_LANGUAGES.has(lang.name)) {
+    for (const p of patterns) {
+      result.add(path.join(dir, '__tests__', p));
+    }
+  }
 
-  return [...sameDirPaths, ...testsSubDirPaths];
+  // Project-root-relative test directories from config.testDirs
+  const projectRoot = findProjectRoot(dir);
+  if (projectRoot && config.testDirs.length > 0) {
+    for (const testDir of config.testDirs) {
+      for (const p of patterns) {
+        result.add(path.join(projectRoot, testDir, p));
+      }
+    }
+  }
+
+  return [...result];
 }
