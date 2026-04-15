@@ -24,6 +24,18 @@ for (const lang of LANGUAGES) {
 }
 
 // ---------------------------------------------------------------------------
+// escapeRegex — prevent regex injection from special chars in filenames
+// ---------------------------------------------------------------------------
+
+/**
+ * Escapes special regex characters in a string so it can be safely
+ * interpolated into a regex pattern (grep -E compatible).
+ */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ---------------------------------------------------------------------------
 // buildImportPattern
 // ---------------------------------------------------------------------------
 
@@ -36,51 +48,55 @@ for (const lang of LANGUAGES) {
  * @returns A regex string suitable for grep -E
  */
 export function buildImportPattern(basename: string, language: string): string {
+  const escaped = escapeRegex(basename);
+
   switch (language) {
     case 'typescript':
     case 'javascript':
     case 'tsx':
     case 'jsx': {
       // ES import:  from '...<basename>'  or  from "...<basename>"
-      const esImport = `from\\s+['"].*\\b${basename}['"]`;
+      const esImport = `from\\s+['"].*\\b${escaped}['"]`;
       // CommonJS:   require('...<basename>')  or  require("...<basename>")
-      const cjsRequire = `require\\(\\s*['"].*\\b${basename}['"]\\s*\\)`;
+      const cjsRequire = `require\\(\\s*['"].*\\b${escaped}['"]\\s*\\)`;
       return `(${esImport}|${cjsRequire})`;
     }
 
     case 'python': {
-      // from .?<basename> import ...
-      const fromImport = `from\\s+\\.?${basename}\\s+import`;
+      // from .{0,3}(pkg.)*<basename> import ...
+      // Handles: from auth, from .auth, from ..auth, from ...auth,
+      //          from mypackage.auth, from ..utils.auth
+      const fromImport = `from\\s+\\.{0,3}(\\w+\\.)*${escaped}\\s+import`;
       // import ...<basename>...
-      const directImport = `import\\s+.*\\b${basename}\\b`;
+      const directImport = `import\\s+.*\\b${escaped}\\b`;
       return `(${fromImport}|${directImport})`;
     }
 
     case 'go': {
       // ".../<basename>"
-      return `["'].*/${basename}["']`;
+      return `["'].*/${escaped}["']`;
     }
 
     case 'kotlin':
     case 'java': {
       // import ....<basename>
-      return `import\\s+.*\\.${basename}\\b`;
+      return `import\\s+.*\\.${escaped}\\b`;
     }
 
     case 'rust': {
       // use ...::<basename>  or  mod <basename>
-      const useStmt = `use\\s+.*::${basename}\\b`;
-      const modStmt = `mod\\s+${basename}\\b`;
+      const useStmt = `use\\s+.*::${escaped}\\b`;
+      const modStmt = `mod\\s+${escaped}\\b`;
       return `(${useStmt}|${modStmt})`;
     }
 
     case 'csharp': {
       // using ....<basename>
-      return `using\\s+.*\\.${basename}\\b`;
+      return `using\\s+.*\\.${escaped}\\b`;
     }
 
     default:
-      return basename;
+      return escaped;
   }
 }
 
@@ -123,10 +139,15 @@ export function findDependents(
   const searchExts = RELATED_EXTENSIONS[ext] ?? [ext];
   const includeArgs = searchExts.flatMap((e) => ['--include', `*${e}`]);
 
+  // Exclude common build/dependency directories to avoid false positives
+  // and prevent timeout on large projects
+  const excludeDirs = ['node_modules', '.git', 'dist', 'build', '.next', 'vendor', '__pycache__', '.venv', 'venv'];
+  const excludeArgs = excludeDirs.flatMap((d) => ['--exclude-dir', d]);
+
   try {
     const stdout = execFileSync(
       'grep',
-      ['-rl', ...includeArgs, '-E', pattern, projectRoot],
+      ['-rl', ...excludeArgs, ...includeArgs, '-E', pattern, projectRoot],
       {
         timeout: options.timeout,
         encoding: 'utf-8',

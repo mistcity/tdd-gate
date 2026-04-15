@@ -339,6 +339,74 @@ describe('buildImportPattern — default fallback', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Critical Fix 2: Regex injection — special characters in basename must be escaped
+// ---------------------------------------------------------------------------
+
+describe('buildImportPattern — regex injection (special chars in basename)', () => {
+  it('does NOT match "lodashXutils" when basename is "lodash.utils" (dot must be literal)', () => {
+    const pattern = buildImportPattern('lodash.utils', 'typescript');
+    // The dot in "lodash.utils" must be escaped to literal dot, not wildcard
+    expect(matches(pattern, 'import { x } from "./lodashXutils"')).toBe(false);
+  });
+
+  it('DOES match "lodash.utils" when basename is "lodash.utils"', () => {
+    const pattern = buildImportPattern('lodash.utils', 'typescript');
+    expect(matches(pattern, 'import { x } from "./lodash.utils"')).toBe(true);
+  });
+
+  it('escapes special regex characters in Python import patterns', () => {
+    const pattern = buildImportPattern('my.module', 'python');
+    // "my.module" should not match "myXmodule"
+    expect(matches(pattern, 'from myXmodule import something')).toBe(false);
+    // but should match "my.module"
+    expect(matches(pattern, 'from my.module import something')).toBe(true);
+  });
+
+  it('escapes special regex characters in Go import patterns', () => {
+    const pattern = buildImportPattern('my.pkg', 'go');
+    expect(matches(pattern, '"github.com/user/myXpkg"')).toBe(false);
+    expect(matches(pattern, '"github.com/user/my.pkg"')).toBe(true);
+  });
+
+  it('escapes special regex characters in Rust import patterns', () => {
+    const pattern = buildImportPattern('my.mod', 'rust');
+    expect(matches(pattern, 'use crate::myXmod;')).toBe(false);
+    expect(matches(pattern, 'use crate::my.mod;')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Critical Fix 3: Python multi-level relative import
+// ---------------------------------------------------------------------------
+
+describe('buildImportPattern — Python multi-level relative imports', () => {
+  it('matches double-dot relative import: from ..auth import login', () => {
+    const pattern = buildImportPattern('auth', 'python');
+    expect(matches(pattern, 'from ..auth import login')).toBe(true);
+  });
+
+  it('matches triple-dot relative import: from ...auth import login', () => {
+    const pattern = buildImportPattern('auth', 'python');
+    expect(matches(pattern, 'from ...auth import login')).toBe(true);
+  });
+
+  it('matches package-qualified import: from mypackage.auth import login', () => {
+    const pattern = buildImportPattern('auth', 'python');
+    expect(matches(pattern, 'from mypackage.auth import login')).toBe(true);
+  });
+
+  it('matches deeply nested package import: from a.b.c.auth import login', () => {
+    const pattern = buildImportPattern('auth', 'python');
+    expect(matches(pattern, 'from a.b.c.auth import login')).toBe(true);
+  });
+
+  it('matches relative + package: from ..utils.auth import login', () => {
+    const pattern = buildImportPattern('auth', 'python');
+    expect(matches(pattern, 'from ..utils.auth import login')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // findDependents — real filesystem tests
 // ---------------------------------------------------------------------------
 
@@ -470,6 +538,82 @@ describe('findDependents', () => {
     );
 
     expect(result).not.toContain(join(tmpDir, 'auth.ts'));
+  });
+
+  // -----------------------------------------------------------------------
+  // Critical Fix 1: grep must exclude node_modules and build directories
+  // -----------------------------------------------------------------------
+
+  it('excludes files inside node_modules/ from results', () => {
+    // Create the source file
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    // Create a file in node_modules that imports auth — should be excluded
+    mkdirSync(join(tmpDir, 'node_modules', 'some-pkg'), { recursive: true });
+    writeFileSync(
+      join(tmpDir, 'node_modules', 'some-pkg', 'index.ts'),
+      'import { login } from "../../auth";',
+    );
+    // Create a normal file that imports auth — should be included
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'app.ts'));
+    expect(result.some(f => f.includes('node_modules'))).toBe(false);
+  });
+
+  it('excludes files inside dist/ from results', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    mkdirSync(join(tmpDir, 'dist'), { recursive: true });
+    writeFileSync(
+      join(tmpDir, 'dist', 'auth-consumer.ts'),
+      'import { login } from "../auth";',
+    );
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'app.ts'));
+    expect(result.some(f => f.includes('/dist/'))).toBe(false);
+  });
+
+  it('excludes files inside .git/ from results', () => {
+    writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
+    mkdirSync(join(tmpDir, '.git', 'hooks'), { recursive: true });
+    writeFileSync(
+      join(tmpDir, '.git', 'hooks', 'pre-commit.ts'),
+      'import { login } from "../../auth";',
+    );
+    writeFileSync(
+      join(tmpDir, 'app.ts'),
+      'import { login } from "./auth";',
+    );
+
+    const result = findDependents(
+      join(tmpDir, 'auth.ts'),
+      'typescript',
+      tmpDir,
+      { maxFiles: 10, timeout: 5000 },
+    );
+
+    expect(result).toContain(join(tmpDir, 'app.ts'));
+    expect(result.some(f => f.includes('/.git/'))).toBe(false);
   });
 
   it('respects maxFiles limit', () => {
