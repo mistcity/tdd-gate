@@ -17,7 +17,7 @@ export function handleStop(
   config: TddGateConfig,
   journal: Journal,
   circuitBreaker: CircuitBreaker,
-): { action: 'allow' } | { action: 'block'; message: string } {
+): { action: 'allow'; summary?: string } | { action: 'block'; message: string } {
   // 1. If completionAudit is disabled, allow
   if (!config.completionAudit) return { action: 'allow' };
 
@@ -85,7 +85,53 @@ export function handleStop(
   // If neither direct nor impact violations, allow
   if (!hasDirectViolation && !hasImpactViolation) return { action: 'allow' };
 
-  // Build combined block message
+  // Observe mode: record violations and build summary, but allow
+  if (config.mode === 'observe') {
+    if (hasDirectViolation) {
+      for (const f of implFiles) {
+        const expected = getExpectedTestPaths(f, config);
+        journal.recordViolation(path.join(cwd, f), expected);
+      }
+    }
+    if (hasImpactViolation) {
+      for (const r of impactResults) {
+        for (let i = 0; i < r.dependents.length; i++) {
+          journal.recordImpactViolation(r.filePath, r.dependents[i], r.missingTests[i] ?? '');
+        }
+      }
+    }
+
+    const violations = journal.getViolations();
+    const ivs = journal.getImpactViolations();
+
+    if (violations.length === 0 && ivs.length === 0) {
+      return { action: 'allow' };
+    }
+
+    const lines: string[] = [];
+    lines.push(`[tdd-gate audit] This message: ${violations.length} TDD violation(s), ${ivs.length} impact violation(s)`);
+    lines.push('');
+
+    if (violations.length > 0) {
+      lines.push('  Direct violations (impl written without test):');
+      for (const v of violations) {
+        const testName = v.expectedTests[0] ? path.basename(v.expectedTests[0]) : 'unknown';
+        lines.push(`    - ${path.basename(v.implFile)} (expected: ${testName})`);
+      }
+    }
+
+    if (ivs.length > 0) {
+      lines.push('');
+      lines.push('  Impact violations (dependent tests not run):');
+      for (const v of ivs) {
+        lines.push(`    - ${path.basename(v.dependent)} depends on modified ${path.basename(v.changedFile)} (run: ${v.missingTest})`);
+      }
+    }
+
+    return { action: 'allow', summary: lines.join('\n') };
+  }
+
+  // Build combined block message (enforce mode)
   const messageParts: string[] = [];
 
   if (hasDirectViolation) {

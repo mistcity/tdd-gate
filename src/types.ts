@@ -90,6 +90,7 @@ export interface TddGateConfig {
   impactAnalysis: boolean;
   impactAnalysisMaxFiles: number;
   impactAnalysisTimeout: number;
+  mode: 'enforce' | 'observe';
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +120,7 @@ export interface LanguageDefinition {
 // Journal Entry Types
 // ---------------------------------------------------------------------------
 
-export type JournalEntryType = 'TEST' | 'IMPL' | 'TEST_RUN';
+export type JournalEntryType = 'TEST' | 'IMPL' | 'TEST_RUN' | 'VIOLATION' | 'IMPACT_VIOLATION';
 
 export interface JournalEntry {
   timestamp: number;

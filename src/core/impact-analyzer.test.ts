@@ -716,6 +716,7 @@ function makeConfig(overrides?: Partial<TddGateConfig>): TddGateConfig {
     impactAnalysis: true,
     impactAnalysisMaxFiles: 50,
     impactAnalysisTimeout: 5000,
+    mode: 'enforce',
     ...overrides,
   };
 }

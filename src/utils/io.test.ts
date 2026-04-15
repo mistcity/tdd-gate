@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
-import { parseHookInput, allow, deny, blockCompletion, readStdin } from './io.js';
+import { parseHookInput, allow, deny, blockCompletion, allowWithSummary, readStdin } from './io.js';
 
 // ---------------------------------------------------------------------------
 // readStdin — Finding #11: verify stderr logging is present in source
@@ -199,5 +199,44 @@ describe('blockCompletion', () => {
   it('exits with code 2', () => {
     blockCompletion('TDD gate blocked: missing tests');
     expect(exitSpy).toHaveBeenCalledWith(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// allowWithSummary
+// ---------------------------------------------------------------------------
+
+describe('allowWithSummary', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stdoutSpy: MockInstance<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stderrSpy: MockInstance<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let exitSpy: MockInstance<any>;
+
+  beforeEach(() => {
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('writes "ok" to stdout', () => {
+    allowWithSummary('some summary text');
+    expect(stdoutSpy).toHaveBeenCalledWith('ok\n');
+  });
+
+  it('writes summary to stderr', () => {
+    allowWithSummary('some summary text');
+    expect(stderrSpy).toHaveBeenCalledWith('some summary text\n');
+  });
+
+  it('exits with code 0', () => {
+    allowWithSummary('some summary text');
+    expect(exitSpy).toHaveBeenCalledWith(0);
   });
 });

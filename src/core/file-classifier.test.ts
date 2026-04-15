@@ -46,6 +46,7 @@ const mockConfig: TddGateConfig = {
   impactAnalysis: true,
   impactAnalysisMaxFiles: 500,
   impactAnalysisTimeout: 5000,
+  mode: 'enforce',
 };
 
 // ---------------------------------------------------------------------------

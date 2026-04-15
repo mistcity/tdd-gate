@@ -35,6 +35,13 @@ describe('DEFAULT_CONFIG', () => {
     expect(DEFAULT_CONFIG.exempt.extensions).toEqual(expected);
   });
 
+  it('has default exempt paths for config files', () => {
+    expect(DEFAULT_CONFIG.exempt.paths).toContain('.config.');
+    expect(DEFAULT_CONFIG.exempt.paths).toContain('tsconfig');
+    expect(DEFAULT_CONFIG.exempt.paths).toContain('vite.config');
+    expect(DEFAULT_CONFIG.exempt.paths.length).toBeGreaterThan(0);
+  });
+
   it('has bashDetection true by default', () => {
     expect(DEFAULT_CONFIG.bashDetection).toBe(true);
   });
@@ -48,8 +55,10 @@ describe('DEFAULT_CONFIG', () => {
     expect(DEFAULT_CONFIG.circuitBreaker.stop).toBe(20);
   });
 
-  it('has empty exempt paths by default', () => {
-    expect(DEFAULT_CONFIG.exempt.paths).toEqual([]);
+  it('has config file patterns in default exempt paths', () => {
+    // Config files like vitest.config.ts, tsconfig.json should be exempt
+    expect(DEFAULT_CONFIG.exempt.paths).toContain('.config.');
+    expect(DEFAULT_CONFIG.exempt.paths).toContain('tsconfig');
   });
 
   it('has empty testCommands by default', () => {
@@ -358,5 +367,63 @@ describe('loadConfig', () => {
     expect(result.impactAnalysis).toBe(false);
     expect(result.impactAnalysisMaxFiles).toBe(100);
     expect(result.impactAnalysisTimeout).toBe(3000);
+  });
+
+  // -------------------------------------------------------------------------
+  // mode field
+  // -------------------------------------------------------------------------
+
+  it('has mode enforce by default', () => {
+    expect(DEFAULT_CONFIG.mode).toBe('enforce');
+  });
+
+  it('returns default mode enforce when no config file', () => {
+    const result = loadConfig(tmpDir);
+    expect(result.mode).toBe('enforce');
+  });
+
+  it('allows user to set mode to observe', () => {
+    const userConfig = { mode: 'observe' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.mode).toBe('observe');
+  });
+
+  it('allows user to explicitly set mode to enforce', () => {
+    const userConfig = { mode: 'enforce' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.mode).toBe('enforce');
+  });
+
+  it('falls back to enforce for invalid mode value', () => {
+    const userConfig = { mode: 'invalid' };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.mode).toBe('enforce');
+  });
+
+  it('falls back to enforce when mode is not a string', () => {
+    const userConfig = { mode: true };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.mode).toBe('enforce');
+  });
+
+  it('falls back to enforce when mode is a number', () => {
+    const userConfig = { mode: 42 };
+    fs.writeFileSync(path.join(tmpDir, 'tdd-gate.config.json'), JSON.stringify(userConfig));
+
+    const result = loadConfig(tmpDir);
+
+    expect(result.mode).toBe('enforce');
   });
 });

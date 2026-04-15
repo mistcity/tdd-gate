@@ -98,6 +98,21 @@ export function allow(): void {
 }
 
 // ---------------------------------------------------------------------------
+// allowWithSummary
+// ---------------------------------------------------------------------------
+
+/**
+ * Approve the current hook invocation and output an audit summary to stderr.
+ * Used in observe mode to report violations without blocking.
+ * Writes "ok\n" to stdout, the summary to stderr, and exits with code 0.
+ */
+export function allowWithSummary(summary: string): void {
+  process.stdout.write('ok\n');
+  process.stderr.write(`${summary}\n`);
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
 // deny
 // ---------------------------------------------------------------------------
 

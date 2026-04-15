@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readStdin, parseHookInput, allow, deny, blockCompletion } from './utils/io.js';
+import { readStdin, parseHookInput, allow, deny, blockCompletion, allowWithSummary } from './utils/io.js';
 import { handlePreToolUse } from './handlers/pre-tool-use.js';
 import { handleUserPromptSubmit } from './handlers/user-prompt.js';
 import { handleStop } from './handlers/stop.js';
@@ -21,7 +21,7 @@ import type { PreToolUseInput, StopInput, HookInput } from './types.js';
 export function route(
   input: HookInput,
   cwd: string,
-): { action: 'allow' } | { action: 'deny'; reason: string } | { action: 'block'; message: string } {
+): { action: 'allow'; summary?: string } | { action: 'deny'; reason: string } | { action: 'block'; message: string } {
   const sessionId = input.session_id;
   const config = loadConfig(cwd);
 
@@ -78,8 +78,13 @@ async function main(): Promise<void> {
       case 'block':
         blockCompletion(result.message);
         break;
-      default:
-        allow();
+      case 'allow':
+        if ('summary' in result && result.summary) {
+          allowWithSummary(result.summary);
+        } else {
+          allow();
+        }
+        break;
     }
   } catch (err) {
     process.stderr.write(`[tdd-gate] internal error (fail-open): ${err instanceof Error ? err.message : String(err)}\n`);

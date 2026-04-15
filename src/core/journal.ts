@@ -33,6 +33,16 @@ export class Journal {
     this.append('TEST_RUN', command);
   }
 
+  /** Record a TDD violation (impl written without test) in observe mode. */
+  recordViolation(implFilePath: string, expectedTests: string[]): void {
+    this.append('VIOLATION', `${implFilePath}|${expectedTests.join('|')}`);
+  }
+
+  /** Record an impact violation (dependent test not run) in observe mode. */
+  recordImpactViolation(changedFile: string, dependent: string, missingTest: string): void {
+    this.append('IMPACT_VIOLATION', `${changedFile}|${dependent}|${missingTest}`);
+  }
+
   /**
    * Check if any test has been recorded matching any of the expected test paths.
    * Matches by basename to handle different directory layouts.
@@ -105,6 +115,28 @@ export class Journal {
       }
       return [];
     }
+  }
+
+  /** Get all VIOLATION entries from the journal. */
+  getViolations(): Array<{ implFile: string; expectedTests: string[] }> {
+    const entries = this.getEntries();
+    return entries
+      .filter(e => e.type === 'VIOLATION')
+      .map(e => {
+        const parts = e.filePath.split('|');
+        return { implFile: parts[0], expectedTests: parts.slice(1) };
+      });
+  }
+
+  /** Get all IMPACT_VIOLATION entries from the journal. */
+  getImpactViolations(): Array<{ changedFile: string; dependent: string; missingTest: string }> {
+    const entries = this.getEntries();
+    return entries
+      .filter(e => e.type === 'IMPACT_VIOLATION')
+      .map(e => {
+        const parts = e.filePath.split('|');
+        return { changedFile: parts[0], dependent: parts[1], missingTest: parts[2] };
+      });
   }
 
   private append(type: string, filePath: string): void {

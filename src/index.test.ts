@@ -118,4 +118,28 @@ describe('route', () => {
     };
     expect(route(implInput, '/tmp')).toEqual({ action: 'allow' });
   });
+
+  it('routes Stop result with summary field correctly', () => {
+    // The route function should be able to return allow with summary
+    // We test the shape of the return type by creating a Stop in observe mode config
+    const sessionId = 'test-route-8';
+    createdSessions.push(sessionId);
+
+    // Create observe mode config file in tmp
+    const configPath = path.join(os.tmpdir(), 'tdd-gate-route-test-' + Date.now());
+    fs.mkdirSync(configPath, { recursive: true });
+    fs.writeFileSync(path.join(configPath, 'tdd-gate.config.json'), JSON.stringify({ mode: 'observe' }));
+
+    const input: StopInput = {
+      hook_event_name: 'Stop',
+      session_id: sessionId,
+    };
+
+    // With empty git diff (mocked to return ''), even in observe mode, no violations → no summary
+    const result = route(input, configPath);
+    expect(result.action).toBe('allow');
+
+    // Clean up
+    try { fs.rmSync(configPath, { recursive: true }); } catch {}
+  });
 });

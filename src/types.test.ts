@@ -290,6 +290,7 @@ describe('TddGateConfig', () => {
       impactAnalysis: false,
       impactAnalysisMaxFiles: 50,
       impactAnalysisTimeout: 5000,
+      mode: 'enforce',
     };
     expect(config.bashDetection).toBe(true);
     expect(config.completionAudit).toBe(false);
@@ -394,6 +395,60 @@ describe('BashAnalysisResult', () => {
 });
 
 // ---------------------------------------------------------------------------
+// JournalEntryType — VIOLATION and IMPACT_VIOLATION
+// ---------------------------------------------------------------------------
+describe('JournalEntryType — observe mode entries', () => {
+  it('accepts VIOLATION value', () => {
+    const t: JournalEntryType = 'VIOLATION';
+    expect(t).toBe('VIOLATION');
+  });
+
+  it('accepts IMPACT_VIOLATION value', () => {
+    const t: JournalEntryType = 'IMPACT_VIOLATION';
+    expect(t).toBe('IMPACT_VIOLATION');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TddGateConfig — mode field
+// ---------------------------------------------------------------------------
+describe('TddGateConfig mode field', () => {
+  it('accepts mode enforce', () => {
+    const config: TddGateConfig = {
+      languages: { typescript: { enabled: true } },
+      exempt: { extensions: [], paths: [] },
+      bashDetection: true,
+      completionAudit: false,
+      circuitBreaker: { preToolUse: 20, stop: 10 },
+      testCommands: [],
+      testDirs: [],
+      impactAnalysis: false,
+      impactAnalysisMaxFiles: 50,
+      impactAnalysisTimeout: 5000,
+      mode: 'enforce',
+    };
+    expect(config.mode).toBe('enforce');
+  });
+
+  it('accepts mode observe', () => {
+    const config: TddGateConfig = {
+      languages: { typescript: { enabled: true } },
+      exempt: { extensions: [], paths: [] },
+      bashDetection: true,
+      completionAudit: false,
+      circuitBreaker: { preToolUse: 20, stop: 10 },
+      testCommands: [],
+      testDirs: [],
+      impactAnalysis: false,
+      impactAnalysisMaxFiles: 50,
+      impactAnalysisTimeout: 5000,
+      mode: 'observe',
+    };
+    expect(config.mode).toBe('observe');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // TddGateConfig — new fields (testCommands, testDirs, impactAnalysis)
 // ---------------------------------------------------------------------------
 describe('TddGateConfig new fields', () => {
@@ -409,6 +464,7 @@ describe('TddGateConfig new fields', () => {
       impactAnalysis: false,
       impactAnalysisMaxFiles: 50,
       impactAnalysisTimeout: 5000,
+      mode: 'enforce',
     };
     expect(config.testCommands).toEqual(['vitest run', 'jest', 'npm test']);
     expect(config.testCommands).toHaveLength(3);
@@ -426,6 +482,7 @@ describe('TddGateConfig new fields', () => {
       impactAnalysis: false,
       impactAnalysisMaxFiles: 50,
       impactAnalysisTimeout: 5000,
+      mode: 'enforce',
     };
     expect(config.testCommands).toHaveLength(0);
   });
@@ -442,6 +499,7 @@ describe('TddGateConfig new fields', () => {
       impactAnalysis: false,
       impactAnalysisMaxFiles: 50,
       impactAnalysisTimeout: 5000,
+      mode: 'enforce',
     };
     expect(config.testDirs).toEqual(['src', 'test', '__tests__']);
     expect(config.testDirs).toHaveLength(3);
@@ -459,6 +517,7 @@ describe('TddGateConfig new fields', () => {
       impactAnalysis: true,
       impactAnalysisMaxFiles: 100,
       impactAnalysisTimeout: 10000,
+      mode: 'enforce',
     };
     expect(config.impactAnalysis).toBe(true);
     expect(config.impactAnalysisMaxFiles).toBe(100);
@@ -483,6 +542,7 @@ describe('TddGateConfig new fields', () => {
       impactAnalysis: true,
       impactAnalysisMaxFiles: 50,
       impactAnalysisTimeout: 5000,
+      mode: 'enforce',
     };
     // Verify all original fields still work
     expect(config.languages['typescript'].enabled).toBe(true);
@@ -496,6 +556,7 @@ describe('TddGateConfig new fields', () => {
     expect(config.impactAnalysis).toBe(true);
     expect(config.impactAnalysisMaxFiles).toBe(50);
     expect(config.impactAnalysisTimeout).toBe(5000);
+    expect(config.mode).toBe('enforce');
   });
 });
 

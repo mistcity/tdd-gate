@@ -1,0 +1,88 @@
+/**
+ * bash-analyzer.ts
+ *
+ * Analyzes bash command strings to detect file write operations and test
+ * runner invocations.
+ */
+// ---------------------------------------------------------------------------
+// Regex patterns
+// ---------------------------------------------------------------------------
+/** cat / echo / printf redirect (single or double >) */
+const REDIRECT_PATTERN = /(?:cat|echo|printf)\s+.*?>{1,2}\s*([^\s;|&]+)/g;
+/** tee [flags] file */
+const TEE_PATTERN = /tee\s+(?:-[a-z]\s+)*([^\s;|&]+)/g;
+/** heredoc redirect: (cat )?> file << ['"]?WORD['"]? */
+const HEREDOC_PATTERN = /(?:cat\s+)?>\s*([^\s<]+)\s*<<\s*'?\w+'?/g;
+// ---------------------------------------------------------------------------
+// Test command prefixes
+// ---------------------------------------------------------------------------
+const TEST_COMMANDS = [
+    'pytest',
+    'python -m pytest',
+    'python3 -m pytest',
+    'npm test',
+    'npm run test',
+    'npx vitest',
+    'npx jest',
+    'yarn test',
+    'go test',
+    'cargo test',
+    'mvn test',
+    'gradle test',
+    'gradlew test',
+    './gradlew test',
+    'dotnet test',
+];
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function collectMatches(pattern, command, commandLabel) {
+    const targets = [];
+    // Reset lastIndex because the same pattern object is reused across calls.
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(command)) !== null) {
+        const filePath = match[1];
+        if (filePath) {
+            targets.push({ filePath, command: commandLabel });
+        }
+    }
+    return targets;
+}
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+export function analyzeBashCommand(command, customTestCommands = []) {
+    try {
+        if (typeof command !== 'string' || command.trim() === '') {
+            return { isTestCommand: false, writeTargets: [] };
+        }
+        // --- Test command detection -------------------------------------------
+        const normalized = command.trim();
+        const allTestCommands = customTestCommands.length > 0
+            ? [...TEST_COMMANDS, ...customTestCommands]
+            : TEST_COMMANDS;
+        const isTestCommand = allTestCommands.some((tc) => normalized === tc || normalized.startsWith(tc + ' '));
+        // --- Write target detection --------------------------------------------
+        const writeTargets = [
+            ...collectMatches(HEREDOC_PATTERN, command, 'heredoc'),
+            ...collectMatches(REDIRECT_PATTERN, command, 'redirect'),
+            ...collectMatches(TEE_PATTERN, command, 'tee'),
+        ];
+        // De-duplicate by filePath (heredoc and redirect patterns may both match
+        // the same heredoc command).
+        const seen = new Set();
+        const dedupedTargets = writeTargets.filter(({ filePath }) => {
+            if (seen.has(filePath))
+                return false;
+            seen.add(filePath);
+            return true;
+        });
+        return { isTestCommand, writeTargets: dedupedTargets };
+    }
+    catch (err) {
+        process.stderr.write(`[tdd-gate] bash analysis failed (fail-open): ${err instanceof Error ? err.message : String(err)}\n`);
+        return { isTestCommand: false, writeTargets: [] };
+    }
+}
+//# sourceMappingURL=bash-analyzer.js.map

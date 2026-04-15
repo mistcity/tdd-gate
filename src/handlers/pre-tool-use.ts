@@ -47,6 +47,10 @@ function checkTdd(
       if (journal.hasTestFor(expectedTests)) {
         return ALLOW;
       }
+      if (config.mode === 'observe') {
+        journal.recordViolation(filePath, expectedTests);
+        return ALLOW;
+      }
       const firstExpected = expectedTests[0] ?? '<unknown_test>';
       return {
         action: 'deny',

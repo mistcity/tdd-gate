@@ -265,4 +265,117 @@ describe('Journal', () => {
       expect(entries[1].type).toBe('IMPL');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Observe mode: recordViolation / getViolations
+  // -------------------------------------------------------------------------
+
+  describe('recordViolation()', () => {
+    it('stores a VIOLATION entry in the journal', () => {
+      journal.recordViolation('/src/foo.ts', ['/src/foo.test.ts']);
+      const entries = journal.getEntries();
+      expect(entries.some(e => e.type === 'VIOLATION')).toBe(true);
+    });
+
+    it('stores impl file path and expected tests in pipe-separated format', () => {
+      journal.recordViolation('/src/foo.ts', ['/src/foo.test.ts', '/src/foo.spec.ts']);
+      const entries = journal.getEntries();
+      const violation = entries.find(e => e.type === 'VIOLATION');
+      expect(violation).toBeDefined();
+      expect(violation!.filePath).toContain('/src/foo.ts');
+      expect(violation!.filePath).toContain('/src/foo.test.ts');
+      expect(violation!.filePath).toContain('/src/foo.spec.ts');
+    });
+  });
+
+  describe('getViolations()', () => {
+    it('returns empty array when no violations recorded', () => {
+      expect(journal.getViolations()).toEqual([]);
+    });
+
+    it('parses single violation correctly', () => {
+      journal.recordViolation('/src/foo.ts', ['/src/foo.test.ts']);
+      const violations = journal.getViolations();
+      expect(violations).toHaveLength(1);
+      expect(violations[0].implFile).toBe('/src/foo.ts');
+      expect(violations[0].expectedTests).toEqual(['/src/foo.test.ts']);
+    });
+
+    it('parses violation with multiple expected tests', () => {
+      journal.recordViolation('/src/bar.ts', ['/src/bar.test.ts', '/src/bar.spec.ts']);
+      const violations = journal.getViolations();
+      expect(violations).toHaveLength(1);
+      expect(violations[0].implFile).toBe('/src/bar.ts');
+      expect(violations[0].expectedTests).toEqual(['/src/bar.test.ts', '/src/bar.spec.ts']);
+    });
+
+    it('returns multiple violations', () => {
+      journal.recordViolation('/src/a.ts', ['/src/a.test.ts']);
+      journal.recordViolation('/src/b.ts', ['/src/b.test.ts']);
+      const violations = journal.getViolations();
+      expect(violations).toHaveLength(2);
+    });
+
+    it('ignores non-VIOLATION entries', () => {
+      journal.recordTest('/src/foo.test.ts');
+      journal.recordImpl('/src/foo.ts');
+      journal.recordViolation('/src/bar.ts', ['/src/bar.test.ts']);
+      const violations = journal.getViolations();
+      expect(violations).toHaveLength(1);
+      expect(violations[0].implFile).toBe('/src/bar.ts');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Observe mode: recordImpactViolation / getImpactViolations
+  // -------------------------------------------------------------------------
+
+  describe('recordImpactViolation()', () => {
+    it('stores an IMPACT_VIOLATION entry in the journal', () => {
+      journal.recordImpactViolation('/src/auth.ts', '/src/api.ts', 'api.test.ts');
+      const entries = journal.getEntries();
+      expect(entries.some(e => e.type === 'IMPACT_VIOLATION')).toBe(true);
+    });
+
+    it('stores changed file, dependent, and missing test in pipe-separated format', () => {
+      journal.recordImpactViolation('/src/auth.ts', '/src/api.ts', 'api.test.ts');
+      const entries = journal.getEntries();
+      const violation = entries.find(e => e.type === 'IMPACT_VIOLATION');
+      expect(violation).toBeDefined();
+      expect(violation!.filePath).toContain('/src/auth.ts');
+      expect(violation!.filePath).toContain('/src/api.ts');
+      expect(violation!.filePath).toContain('api.test.ts');
+    });
+  });
+
+  describe('getImpactViolations()', () => {
+    it('returns empty array when no impact violations recorded', () => {
+      expect(journal.getImpactViolations()).toEqual([]);
+    });
+
+    it('parses single impact violation correctly', () => {
+      journal.recordImpactViolation('/src/auth.ts', '/src/api.ts', 'api.test.ts');
+      const violations = journal.getImpactViolations();
+      expect(violations).toHaveLength(1);
+      expect(violations[0].changedFile).toBe('/src/auth.ts');
+      expect(violations[0].dependent).toBe('/src/api.ts');
+      expect(violations[0].missingTest).toBe('api.test.ts');
+    });
+
+    it('returns multiple impact violations', () => {
+      journal.recordImpactViolation('/src/auth.ts', '/src/api.ts', 'api.test.ts');
+      journal.recordImpactViolation('/src/db.ts', '/src/service.ts', 'service.test.ts');
+      const violations = journal.getImpactViolations();
+      expect(violations).toHaveLength(2);
+    });
+
+    it('ignores non-IMPACT_VIOLATION entries', () => {
+      journal.recordTest('/src/foo.test.ts');
+      journal.recordViolation('/src/bar.ts', ['/src/bar.test.ts']);
+      journal.recordImpactViolation('/src/auth.ts', '/src/api.ts', 'api.test.ts');
+      const violations = journal.getImpactViolations();
+      expect(violations).toHaveLength(1);
+      expect(violations[0].changedFile).toBe('/src/auth.ts');
+    });
+  });
 });

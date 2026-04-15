@@ -30,7 +30,12 @@ export const DEFAULT_CONFIG: TddGateConfig = {
       '.txt', '.csv', '.svg', '.png', '.jpg', '.gif', '.ico',
       '.woff', '.woff2', '.ttf', '.eot',
     ],
-    paths: [],
+    paths: [
+      '.config.', // vitest.config.ts, jest.config.ts, webpack.config.js, etc.
+      'vite.config', 'next.config', 'nuxt.config', 'svelte.config',
+      'tailwind.config', 'postcss.config', 'babel.config',
+      'tsconfig', 'eslint.config', 'prettier.config',
+    ],
   },
   bashDetection: true,
   completionAudit: true,
@@ -43,6 +48,7 @@ export const DEFAULT_CONFIG: TddGateConfig = {
   impactAnalysis: true,
   impactAnalysisMaxFiles: 500,
   impactAnalysisTimeout: 5000,
+  mode: 'enforce',
 };
 
 // ---------------------------------------------------------------------------
@@ -120,6 +126,12 @@ export function loadConfig(cwd: string): TddGateConfig {
       }
     }
 
+    // Validate mode: must be 'enforce' or 'observe', fallback to 'enforce'
+    const rawMode = override(user, 'mode', 'string', DEFAULT_CONFIG.mode);
+    const mode: TddGateConfig['mode'] = (rawMode === 'enforce' || rawMode === 'observe')
+      ? rawMode
+      : DEFAULT_CONFIG.mode;
+
     return {
       languages,
       exempt,
@@ -131,6 +143,7 @@ export function loadConfig(cwd: string): TddGateConfig {
       impactAnalysis:         override(user, 'impactAnalysis', 'boolean', DEFAULT_CONFIG.impactAnalysis),
       impactAnalysisMaxFiles: override(user, 'impactAnalysisMaxFiles', 'number', DEFAULT_CONFIG.impactAnalysisMaxFiles),
       impactAnalysisTimeout:  override(user, 'impactAnalysisTimeout', 'number', DEFAULT_CONFIG.impactAnalysisTimeout),
+      mode,
     };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {

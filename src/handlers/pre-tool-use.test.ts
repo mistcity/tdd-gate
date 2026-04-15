@@ -38,6 +38,12 @@ const testConfig: TddGateConfig = {
   impactAnalysis: true,
   impactAnalysisMaxFiles: 500,
   impactAnalysisTimeout: 5000,
+  mode: 'enforce',
+};
+
+const observeConfig: TddGateConfig = {
+  ...testConfig,
+  mode: 'observe',
 };
 
 // ---------------------------------------------------------------------------
@@ -49,22 +55,32 @@ interface StubJournal {
   tests: string[];
   impls: string[];
   testRuns: string[];
+  violations: Array<{ implFile: string; expectedTests: string[] }>;
+  impactViolations: Array<{ changedFile: string; dependent: string; missingTest: string }>;
   recordTest(p: string): void;
   recordImpl(p: string): void;
   recordTestRun(c: string): void;
+  recordViolation(implFile: string, expectedTests: string[]): void;
+  recordImpactViolation(changedFile: string, dependent: string, missingTest: string): void;
   hasTestFor(paths: string[]): boolean;
   hasTestRun(): boolean;
   getEntries(): Array<{ type: string; filePath: string }>;
+  getViolations(): Array<{ implFile: string; expectedTests: string[] }>;
+  getImpactViolations(): Array<{ changedFile: string; dependent: string; missingTest: string }>;
 }
 
 function createStubJournal(): StubJournal {
   const tests: string[] = [];
   const impls: string[] = [];
   const testRuns: string[] = [];
+  const violations: Array<{ implFile: string; expectedTests: string[] }> = [];
+  const impactViolations: Array<{ changedFile: string; dependent: string; missingTest: string }> = [];
   return {
     recordTest(p: string) { tests.push(p); },
     recordImpl(p: string) { impls.push(p); },
     recordTestRun(c: string) { testRuns.push(c); },
+    recordViolation(implFile: string, expectedTests: string[]) { violations.push({ implFile, expectedTests }); },
+    recordImpactViolation(changedFile: string, dependent: string, missingTest: string) { impactViolations.push({ changedFile, dependent, missingTest }); },
     hasTestFor(paths: string[]) {
       return paths.some((p: string) => tests.some((t: string) =>
         t.endsWith('/' + p.split('/').pop()!) || p.endsWith('/' + t.split('/').pop()!)
@@ -72,7 +88,9 @@ function createStubJournal(): StubJournal {
     },
     hasTestRun() { return testRuns.length > 0; },
     getEntries() { return []; },
-    tests, impls, testRuns,
+    getViolations() { return violations; },
+    getImpactViolations() { return impactViolations; },
+    tests, impls, testRuns, violations, impactViolations,
   };
 }
 
@@ -426,5 +444,90 @@ describe('PreToolUse handler — Edge cases', () => {
     const result = callHandler(input, noBashConfig, journal, cb);
 
     expect(result.action).toBe('allow');
+  });
+});
+
+// ===========================================================================
+// Observe mode
+// ===========================================================================
+
+describe('PreToolUse handler — Observe mode', () => {
+  it('allows impl file without test in observe mode (instead of deny)', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
+
+    const result = callHandler(input, observeConfig, journal, cb);
+
+    expect(result.action).toBe('allow');
+  });
+
+  it('records violation in journal when impl file has no test in observe mode', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
+
+    callHandler(input, observeConfig, journal, cb);
+
+    expect(journal.violations).toHaveLength(1);
+    expect(journal.violations[0].implFile).toBe('/project/src/foo.ts');
+    expect(journal.violations[0].expectedTests.length).toBeGreaterThan(0);
+  });
+
+  it('still allows exempt files in observe mode without recording violation', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('Write', { file_path: '/project/package.json' });
+
+    const result = callHandler(input, observeConfig, journal, cb);
+
+    expect(result.action).toBe('allow');
+    expect(journal.violations).toHaveLength(0);
+  });
+
+  it('still allows test files in observe mode and records in journal', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('Write', { file_path: '/project/src/foo.test.ts' });
+
+    const result = callHandler(input, observeConfig, journal, cb);
+
+    expect(result.action).toBe('allow');
+    expect(journal.tests).toContain('/project/src/foo.test.ts');
+    expect(journal.violations).toHaveLength(0);
+  });
+
+  it('does not record violation when test already in journal in observe mode', () => {
+    const journal = createStubJournal();
+    journal.recordTest('/project/src/foo.test.ts');
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
+
+    const result = callHandler(input, observeConfig, journal, cb);
+
+    expect(result.action).toBe('allow');
+    expect(journal.violations).toHaveLength(0);
+  });
+
+  it('allows bash write in observe mode and records violation', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('Bash', { command: 'echo "code" > foo.ts' });
+
+    const result = callHandler(input, observeConfig, journal, cb);
+
+    expect(result.action).toBe('allow');
+    expect(journal.violations).toHaveLength(1);
+  });
+
+  it('still denies in enforce mode (unchanged behavior)', () => {
+    const journal = createStubJournal();
+    const cb = createStubCircuitBreaker();
+    const input = makeInput('Write', { file_path: '/project/src/foo.ts' });
+
+    const result = callHandler(input, testConfig, journal, cb);
+
+    expect(result.action).toBe('deny');
+    expect(journal.violations).toHaveLength(0);
   });
 });

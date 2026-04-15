@@ -3,6 +3,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import path from 'path';
 import type { TddGateConfig, ImpactResult } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,7 @@ const testConfig: TddGateConfig = {
   impactAnalysis: true,
   impactAnalysisMaxFiles: 500,
   impactAnalysisTimeout: 5000,
+  mode: 'enforce',
 };
 
 const auditDisabledConfig: TddGateConfig = {
@@ -58,11 +60,18 @@ const auditDisabledConfig: TddGateConfig = {
   completionAudit: false,
 };
 
+const observeConfig: TddGateConfig = {
+  ...testConfig,
+  mode: 'observe',
+};
+
 // ---------------------------------------------------------------------------
 // Stub factories
 // ---------------------------------------------------------------------------
 
 function createStubJournal(hasRun = false) {
+  const violations: Array<{ implFile: string; expectedTests: string[] }> = [];
+  const impactViolations: Array<{ changedFile: string; dependent: string; missingTest: string }> = [];
   return {
     hasTestRun: () => hasRun,
     recordTest(_p: string) {},
@@ -70,6 +79,12 @@ function createStubJournal(hasRun = false) {
     recordTestRun(_c: string) {},
     hasTestFor: () => false,
     getEntries: () => [],
+    recordViolation(implFile: string, expectedTests: string[]) { violations.push({ implFile, expectedTests }); },
+    recordImpactViolation(changedFile: string, dependent: string, missingTest: string) { impactViolations.push({ changedFile, dependent, missingTest }); },
+    getViolations() { return violations; },
+    getImpactViolations() { return impactViolations; },
+    _violations: violations,
+    _impactViolations: impactViolations,
   } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
@@ -394,6 +409,7 @@ describe('handleStop — cached diff combined with HEAD diff', () => {
 const impactDisabledConfig: TddGateConfig = {
   ...testConfig,
   impactAnalysis: false,
+  mode: 'enforce',
 };
 
 describe('handleStop — impact analysis blocks when dependent tests not run', () => {
@@ -568,5 +584,177 @@ describe('handleStop — impact analysis with no uncovered dependents', () => {
     );
 
     expect(result.action).toBe('allow');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Observe mode tests
+// ---------------------------------------------------------------------------
+
+describe('handleStop — observe mode', () => {
+  it('returns allow (not block) when impl files changed without tests in observe mode', () => {
+    mockDiff(['src/auth.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+  });
+
+  it('returns summary in allow result when direct violations exist in observe mode', () => {
+    mockDiff(['src/auth.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    expect(result).toHaveProperty('summary');
+    if ('summary' in result && result.summary) {
+      expect(result.summary).toContain('tdd-gate audit');
+      expect(result.summary).toContain('TDD violation');
+      expect(result.summary).toContain('auth.ts');
+    }
+  });
+
+  it('returns summary with impact violations in observe mode', () => {
+    mockDiff(['src/auth.ts', 'src/auth.test.ts']);
+
+    const impactResults: ImpactResult[] = [
+      {
+        filePath: '/project/src/auth.ts',
+        dependents: ['/project/src/api.ts'],
+        missingTests: ['api.test.ts'],
+      },
+    ];
+    mockAnalyzeImpact.mockReturnValue(impactResults);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    expect(result).toHaveProperty('summary');
+    if ('summary' in result && result.summary) {
+      expect(result.summary).toContain('impact violation');
+      expect(result.summary).toContain('api.ts');
+      expect(result.summary).toContain('auth.ts');
+    }
+  });
+
+  it('returns allow without summary when no violations in observe mode', () => {
+    mockDiff(['src/auth.ts', 'src/auth.test.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    // No violations, so no summary
+    expect(result).not.toHaveProperty('summary');
+  });
+
+  it('records violations in journal in observe mode', () => {
+    mockDiff(['src/auth.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const journal = createStubJournal(false);
+
+    handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      journal,
+      createStubCircuitBreaker(),
+    );
+
+    expect(journal._violations.length).toBeGreaterThan(0);
+  });
+
+  it('records impact violations in journal in observe mode', () => {
+    mockDiff(['src/auth.ts', 'src/auth.test.ts']);
+
+    const impactResults: ImpactResult[] = [
+      {
+        filePath: '/project/src/auth.ts',
+        dependents: ['/project/src/api.ts'],
+        missingTests: ['api.test.ts'],
+      },
+    ];
+    mockAnalyzeImpact.mockReturnValue(impactResults);
+
+    const journal = createStubJournal(false);
+
+    handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      journal,
+      createStubCircuitBreaker(),
+    );
+
+    expect(journal._impactViolations.length).toBeGreaterThan(0);
+  });
+
+  it('still blocks in enforce mode (unchanged behavior)', () => {
+    mockDiff(['src/auth.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      testConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('block');
+  });
+
+  it('summary contains both direct and impact violations when both exist', () => {
+    mockDiff(['src/auth.ts']);
+
+    const impactResults: ImpactResult[] = [
+      {
+        filePath: '/project/src/auth.ts',
+        dependents: ['/project/src/api.ts'],
+        missingTests: ['api.test.ts'],
+      },
+    ];
+    mockAnalyzeImpact.mockReturnValue(impactResults);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    if ('summary' in result && result.summary) {
+      expect(result.summary).toContain('TDD violation');
+      expect(result.summary).toContain('impact violation');
+    }
   });
 });

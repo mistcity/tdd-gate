@@ -15,6 +15,9 @@ vi.mock('child_process', () => ({
   execFileSync: vi.fn(() => ''),
 }));
 
+import { execFileSync } from 'child_process';
+const mockExecSync = vi.mocked(execFileSync);
+
 // ---------------------------------------------------------------------------
 // Helper builders — reduce boilerplate
 // ---------------------------------------------------------------------------
@@ -68,6 +71,8 @@ const SESSION_IDS = [
   'integ-test-9a',
   'integ-test-9b',
   'integ-test-9c',
+  'integ-test-observe-1',
+  'integ-test-observe-2',
 ];
 
 beforeEach(() => {
@@ -283,5 +288,55 @@ describe('Scenario 9: Multiple language support', () => {
     // Write the Kotlin impl file → should be allowed because test was recorded
     const implResult = route(makeWrite(sessionId, '/project/Foo.kt'), '/project');
     expect(implResult).toEqual({ action: 'allow' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario 10: Observe Mode — full flow
+// ---------------------------------------------------------------------------
+
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+describe('Scenario 10: Observe mode full flow', () => {
+  let observeDir: string;
+
+  beforeEach(() => {
+    // Create a temp directory with observe mode config
+    observeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tdd-gate-observe-'));
+    fs.writeFileSync(
+      path.join(observeDir, 'tdd-gate.config.json'),
+      JSON.stringify({ mode: 'observe' }),
+    );
+  });
+
+  afterEach(() => {
+    try { fs.rmSync(observeDir, { recursive: true }); } catch {}
+  });
+
+  it('allows impl file without test in observe mode (no deny)', () => {
+    const sessionId = 'integ-test-observe-1';
+
+    // Write impl without test → in observe mode, should be allowed
+    const result = route(makeWrite(sessionId, '/project/bar.ts'), observeDir);
+    expect(result.action).toBe('allow');
+  });
+
+  it('Stop produces allow (not block) with summary in observe mode when impl has no test', () => {
+    const sessionId = 'integ-test-observe-2';
+
+    // Simulate git diff returning an impl file
+    mockExecSync.mockImplementation((_file: unknown, args: unknown) => {
+      const argArr = args as string[];
+      if (argArr.includes('--cached')) return '';
+      return 'src/auth.ts';
+    });
+
+    const stopResult = route(makeStop(sessionId), observeDir);
+    expect(stopResult.action).toBe('allow');
+
+    // Reset mock to default
+    mockExecSync.mockImplementation(() => '');
   });
 });
