@@ -151,7 +151,12 @@ export function findDependents(
   const basename = path.basename(filePath, ext);
 
   // Skip files with overly generic basenames — they produce massive false positives
-  if (GENERIC_BASENAMES.has(basename)) return [];
+  if (GENERIC_BASENAMES.has(basename)) {
+    process.stderr.write(
+      `[tdd-gate] skipping impact analysis for ${path.basename(filePath)} (generic basename "${basename}")\n`
+    );
+    return [];
+  }
 
   const pattern = buildImportPattern(basename, language);
 

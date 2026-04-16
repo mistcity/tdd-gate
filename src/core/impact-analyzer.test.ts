@@ -805,6 +805,27 @@ describe('findDependents — generic basename skip', () => {
     expect(result).toEqual([]);
   });
 
+  it('logs to stderr when skipping generic basename', () => {
+    writeFileSync(join(tmpDir, 'index.ts'), 'export function main() {}');
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      findDependents(
+        join(tmpDir, 'index.ts'),
+        'typescript',
+        tmpDir,
+        { maxFiles: 10, timeout: 5000 },
+      );
+      expect(stderrSpy).toHaveBeenCalled();
+      const msg = stderrSpy.mock.calls[0]?.[0] as string;
+      expect(msg).toContain('[tdd-gate]');
+      expect(msg).toContain('generic basename');
+      expect(msg).toContain('index');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
+
   it('still works for auth.ts (not generic)', () => {
     writeFileSync(join(tmpDir, 'auth.ts'), 'export function login() {}');
     writeFileSync(
