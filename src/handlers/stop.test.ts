@@ -789,6 +789,7 @@ describe('handleStop — observe mode', () => {
     );
 
     expect(result.action).toBe('allow');
+    expect(result).toHaveProperty('summary');
     if ('summary' in result && result.summary) {
       expect(result.summary).toContain('TDD violation');
       expect(result.summary).toContain('impact violation');
@@ -810,6 +811,7 @@ describe('handleStop — observe mode', () => {
     );
 
     expect(result.action).toBe('allow');
+    expect(result).toHaveProperty('summary');
     if ('summary' in result && result.summary) {
       expect(result.summary).toContain('Journal write errors occurred');
     }
@@ -830,8 +832,73 @@ describe('handleStop — observe mode', () => {
     );
 
     expect(result.action).toBe('allow');
+    expect(result).toHaveProperty('summary');
     if ('summary' in result && result.summary) {
       expect(result.summary).not.toContain('Journal write errors occurred');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Observe mode edge cases
+// ---------------------------------------------------------------------------
+
+describe('handleStop — observe mode edge cases', () => {
+  const observeAuditDisabledConfig: TddGateConfig = {
+    ...observeConfig,
+    completionAudit: false,
+  };
+
+  it('returns plain allow without summary when observe + completionAudit: false', () => {
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeAuditDisabledConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    expect(result).not.toHaveProperty('summary');
+    expect(mockExecSync).not.toHaveBeenCalled();
+  });
+
+  it('returns allow without violations when observe + hasTestRun() === true', () => {
+    mockDiff(['src/auth.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      createStubJournal(true), // hasTestRun = true
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    // Test run was recorded → no direct violation, no impact violation → no summary
+    expect(result).not.toHaveProperty('summary');
+  });
+
+  it('summary lists all violations when observe + multiple impl files', () => {
+    mockDiff(['src/auth.ts', 'src/db.ts', 'src/service.ts']);
+    mockAnalyzeImpact.mockReturnValue([]);
+
+    const result = handleStop(
+      'sess1',
+      '/project',
+      observeConfig,
+      createStubJournal(false),
+      createStubCircuitBreaker(),
+    );
+
+    expect(result.action).toBe('allow');
+    expect(result).toHaveProperty('summary');
+    if ('summary' in result && result.summary) {
+      expect(result.summary).toContain('auth.ts');
+      expect(result.summary).toContain('db.ts');
+      expect(result.summary).toContain('service.ts');
+      expect(result.summary).toContain('3 TDD violation(s)');
     }
   });
 });

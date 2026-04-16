@@ -316,6 +316,26 @@ describe('Journal', () => {
       expect(violations).toHaveLength(2);
     });
 
+    it('skips malformed VIOLATION entry without pipe separator', () => {
+      // Manually write a VIOLATION entry without any pipe — just a bare path
+      fs.appendFileSync(journalPath, `${Date.now()} VIOLATION /src/bad.ts\n`);
+      // Also write a valid one
+      journal.recordViolation('/src/good.ts', ['/src/good.test.ts']);
+
+      const violations = journal.getViolations();
+      // Only the valid one should be returned
+      expect(violations).toHaveLength(1);
+      expect(violations[0].implFile).toBe('/src/good.ts');
+    });
+
+    it('skips VIOLATION entry where implFile part is empty', () => {
+      // Write a VIOLATION entry with an empty first part (starts with pipe)
+      fs.appendFileSync(journalPath, `${Date.now()} VIOLATION |/src/foo.test.ts\n`);
+
+      const violations = journal.getViolations();
+      expect(violations).toHaveLength(0);
+    });
+
     it('ignores non-VIOLATION entries', () => {
       journal.recordTest('/src/foo.test.ts');
       journal.recordImpl('/src/foo.ts');

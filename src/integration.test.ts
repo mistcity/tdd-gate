@@ -335,6 +335,8 @@ describe('Scenario 10: Observe mode full flow', () => {
 
     const stopResult = route(makeStop(sessionId), observeDir);
     expect(stopResult.action).toBe('allow');
+    // Violations exist → summary must be present
+    expect(stopResult).toHaveProperty('summary');
 
     // Reset mock to default
     mockExecSync.mockImplementation(() => '');

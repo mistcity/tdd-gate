@@ -119,13 +119,12 @@ export class Journal {
 
   /** Get all VIOLATION entries from the journal. */
   getViolations(): Array<{ implFile: string; expectedTests: string[] }> {
-    const entries = this.getEntries();
-    return entries
-      .filter(e => e.type === 'VIOLATION')
-      .map(e => {
-        const parts = e.filePath.split('|');
-        return { implFile: parts[0] ?? '', expectedTests: parts.slice(1) };
-      });
+    return this.getEntries().flatMap(e => {
+      if (e.type !== 'VIOLATION') return [];
+      const parts = e.filePath.split('|');
+      if (parts.length < 2 || !(parts[0] ?? '').trim()) return [];
+      return [{ implFile: parts[0] ?? '', expectedTests: parts.slice(1) }];
+    });
   }
 
   /** Get all IMPACT_VIOLATION entries from the journal. */
