@@ -34,6 +34,7 @@ tdd-gate fixes this at the tool level. Before Claude can write or edit an implem
 | Response time | **<10ms** | ~1-3s | <10ms |
 | Languages | **10** | 8 | Shell-based |
 | Impact analysis | **Yes** | No | No |
+| Observe/audit mode | **Yes** | No | No |
 | Test quality check | No | **Yes** | No |
 
 tdd-gate and tdd-guard are complementary, not competing. tdd-gate enforces that tests exist; tdd-guard can verify that tests are meaningful. Use both for maximum coverage.
@@ -52,6 +53,37 @@ Claude modifies auth.ts → runs auth.test.ts → tries to finish
 ```
 
 This catches the #1 source of regressions: changing a module without testing its consumers. Zero API cost.
+
+---
+
+## Observe Mode
+
+Run tdd-gate in audit-only mode — no blocking, just reporting.
+
+```json
+{
+  "mode": "observe"
+}
+```
+
+In observe mode:
+- **PreToolUse**: Implementation files without tests are allowed, but each violation is recorded
+- **Stop**: Instead of blocking, outputs an audit summary to stderr
+
+Example summary output:
+```
+[tdd-gate audit] This message: 3 TDD violation(s), 1 impact violation(s)
+
+  Direct violations (impl written without test):
+    - auth.ts (expected: auth.test.ts)
+    - api.ts (expected: api.test.ts)
+    - utils.ts (expected: utils.test.ts)
+
+  Impact violations (dependent tests not run):
+    - service.ts depends on modified auth.ts (run: service.test.ts)
+```
+
+Use observe mode to understand your team's TDD compliance before enabling enforcement. Default mode is `"enforce"`.
 
 ---
 
@@ -146,6 +178,7 @@ To customize, create `tdd-gate.config.json` in your project root:
 
 | Field | Default | Description |
 |---|---|---|
+| `mode` | `"enforce"` | `"enforce"` blocks violations, `"observe"` records without blocking |
 | `languages.<lang>.enabled` | `true` | Disable enforcement for a specific language |
 | `exempt.extensions` | See above | File extensions that are never checked |
 | `exempt.paths` | `[]` | Path substrings that are always exempt (e.g. `migrations/`) |
