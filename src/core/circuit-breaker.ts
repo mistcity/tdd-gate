@@ -42,8 +42,10 @@ export class CircuitBreaker {
       count += 1;
       fs.writeFileSync(this.counterPath, String(count), 'utf-8');
       return count > this.limit;
-    } catch {
-      // Any write error — fail safe (don't auto-allow)
+    } catch (err) {
+      process.stderr.write(
+        `[tdd-gate] circuit breaker write failed (counter not incremented): ${err instanceof Error ? err.message : String(err)}\n`
+      );
       return false;
     }
   }
@@ -55,7 +57,9 @@ export class CircuitBreaker {
     } catch (err: unknown) {
       const nodeErr = err as NodeJS.ErrnoException;
       if (nodeErr.code !== 'ENOENT') {
-        // Silently ignore other errors
+        process.stderr.write(
+          `[tdd-gate] circuit breaker reset failed: ${err instanceof Error ? err.message : String(err)}\n`
+        );
       }
     }
   }

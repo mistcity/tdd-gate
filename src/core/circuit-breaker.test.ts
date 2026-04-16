@@ -132,5 +132,43 @@ describe('CircuitBreaker', () => {
     it('does not throw when counter file does not exist', () => {
       expect(() => cb.reset()).not.toThrow();
     });
+
+    it('logs to stderr on non-ENOENT reset error', () => {
+      cb.check(); // create file
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {
+        const err = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+        err.code = 'EACCES';
+        throw err;
+      });
+      try {
+        cb.reset();
+        expect(stderrSpy).toHaveBeenCalled();
+        const msg = stderrSpy.mock.calls[0]?.[0] as string;
+        expect(msg).toContain('[tdd-gate]');
+        expect(msg).toContain('circuit breaker reset failed');
+      } finally {
+        unlinkSpy.mockRestore();
+        stderrSpy.mockRestore();
+      }
+    });
+
+    it('logs to stderr on write error in check()', () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
+        throw new Error('ENOSPC: no space left on device');
+      });
+      try {
+        const result = cb.check();
+        expect(result).toBe(false); // fail-safe: don't auto-allow
+        expect(stderrSpy).toHaveBeenCalled();
+        const msg = stderrSpy.mock.calls[0]?.[0] as string;
+        expect(msg).toContain('[tdd-gate]');
+        expect(msg).toContain('circuit breaker write failed');
+      } finally {
+        writeSpy.mockRestore();
+        stderrSpy.mockRestore();
+      }
+    });
   });
 });
